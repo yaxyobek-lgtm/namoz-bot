@@ -54,7 +54,7 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish - TO'LIQ YANGILANDI
+// Keyingi namoz va qolgan vaqtni topish - UNIVERSAL YECHIM
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -94,6 +94,15 @@ function getNextPrayerWithTime(times) {
   }
   
   // Eng yaqin namozni topamiz
+  if (prayers.length === 0) {
+    return {
+      prayer: 'Fajr',
+      prayerName: prayerNames['Fajr'],
+      time: times['Fajr'],
+      remaining: "0 daqiqa"
+    };
+  }
+  
   const nextPrayer = prayers.reduce((closest, prayer) => {
     return prayer.timeDiff < closest.timeDiff ? prayer : closest;
   });
@@ -108,11 +117,29 @@ function getNextPrayerWithTime(times) {
   };
 }
 
+// Vaqtni tekshirish funksiyasi - YANGI
+function checkPrayerTimes(times) {
+  const now = new Date();
+  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  
+  console.log("=== Vaqt tekshiruvi ===");
+  console.log(`Joriy vaqt: ${currentTime}`);
+  
+  for (const prayer of prayerOrder) {
+    if (prayer === 'Sunrise') continue;
+    console.log(`${prayerNames[prayer]}: ${times[prayer]}`);
+  }
+  
+  const nextPrayer = getNextPrayerWithTime(times);
+  console.log(`Keyingi namoz: ${nextPrayer.prayerName}`);
+  console.log("======================");
+}
+
 // Foydalanuvchilarni saqlash
 const users = new Set();
 const userRatings = {};
 
-// VILOYATLAR VA TUMANLAR
+// VILOYATLAR VA TUMANLAR - O'ZBEKISTONNING BARCHA VILOYATLARI
 const regions = {
   "Toshkent shahri": {
     districts: {
@@ -442,7 +469,7 @@ bot.action(/region_(.+)/, (ctx) => {
   );
 });
 
-// Tuman tanlash
+// Tuman tanlash - BARCHA TUMANLAR UCHUN BIR XIL ISHLAYDI
 bot.action(/district_(.+)/, async (ctx) => {
   const district = ctx.match[1];
   const userId = ctx.from.id;
@@ -467,8 +494,9 @@ bot.action(/district_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
 
+    // API so'rovi - timezone ni aniq belgilaymiz
     const response = await fetch(
-      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2`
+      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
     );
     const data = await response.json();
 
@@ -476,6 +504,9 @@ bot.action(/district_(.+)/, async (ctx) => {
 
     const times = data.data.timings;
     const date = data.data.date.readable;
+    
+    // Vaqtlarni tekshirish
+    checkPrayerTimes(times);
     
     const nextPrayer = getNextPrayerWithTime(times);
     
@@ -515,12 +546,13 @@ bot.action(/district_(.+)/, async (ctx) => {
   }
 });
 
-// Bot haqida - YANGILANDI (baholar statistikasi)
+// ... qolgan funksiyalar (bot_info, rating, share) bir xil ...
+
+// Bot haqida
 bot.action('bot_info', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
   
-  // O'rtacha bahoni hisoblash
   let averageRating = "0.0";
   if (totalRatings > 0) {
     const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
@@ -552,21 +584,17 @@ Version: 2.0
     await ctx.editMessageText(message, {
       ...keyboard
     });
-  } catch (error) {
-    // Xabar o'zgartirish xatosini e'tiborsiz qoldirish
-  }
+  } catch (error) {}
 });
 
-// Baholash tizimi - YANGILANDI
+// Baholash tizimi
 bot.action('rate_bot', (ctx) => {
   const userId = ctx.from.id;
   
-  // Agar foydalanuvchi allaqachon baholagan bo'lsa
   if (userRatings[userId]) {
     const userRating = userRatings[userId];
     const totalRatings = Object.keys(userRatings).length;
     
-    // O'rtacha bahoni hisoblash
     let averageRating = "0.0";
     if (totalRatings > 0) {
       const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
@@ -635,14 +663,12 @@ const ratingHandlers = {
 for (const [action, rating] of Object.entries(ratingHandlers)) {
   bot.action(action, async (ctx) => {
     const userId = ctx.from.id;
-    const firstName = ctx.from.first_name || "Foydalanuvchi";
     
     const oldRating = userRatings[userId];
     userRatings[userId] = rating;
     
     const totalRatings = Object.keys(userRatings).length;
     
-    // O'rtacha bahoni hisoblash
     let averageRating = "0.0";
     if (totalRatings > 0) {
       const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
