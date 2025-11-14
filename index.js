@@ -4,10 +4,9 @@ import { createServer } from 'http';
 
 const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df02LTB0ylfAPOonWGs");
 
-// Bot haqida ma'lumot
+// Bot haqida ma'lumot - MARKDOWN TUZATILDI
 function getBotInfo(firstName) {
-  return `
-🕌 **Namoz Vaqtlari Boti**
+  return `🕌 **Namoz Vaqtlari Boti**
 
 Assalomu alaykum ${firstName || "do'st"}! 😊 Bu bot orqali siz:
 
@@ -15,10 +14,9 @@ Assalomu alaykum ${firstName || "do'st"}! 😊 Bu bot orqali siz:
 ✅ **O'zbekistonning barcha viloyat va tumanlari** uchun aniq vaqtlar
 ✅ **Qolgan vaqtni** ko'rish (keyingi namozgacha qancha vaqt qolgani)
 
-Botdan foydalanish uchun /start buyrog'ini bering yoki pastdagi tugmalardan foydalaning.
+Botdan foydalanish uchun /start buyrug'ini bering yoki pastdagi tugmalardan foydalaning.
 
-🤲 *"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)
-`;
+🤲 *"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)`;
 }
 
 // Namoz vaqtlarini tartibda saqlash
@@ -32,7 +30,7 @@ const prayerNames = {
   'Isha': '🌙 Xufton'
 };
 
-// Qolgan vaqtni hisoblash
+// Qolgan vaqtni hisoblash - YANGILANDI
 function getTimeRemaining(currentTime, prayerTime) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const [prayerHours, prayerMinutes] = prayerTime.split(':').map(Number);
@@ -42,6 +40,7 @@ function getTimeRemaining(currentTime, prayerTime) {
   
   let diff = prayerTotal - currentTotal;
   
+  // Agar vaqt o'tib bo'lsa, keyingi kunga o'tkazamiz
   if (diff < 0) {
     diff += 24 * 60;
   }
@@ -56,7 +55,7 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish
+// Keyingi namoz va qolgan vaqtni topish - TO'LIQ YANGILANDI
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -64,9 +63,10 @@ function getNextPrayerWithTime(times) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const currentTotal = currentHours * 60 + currentMinutes;
   
-  let nextPrayer = null;
-  let minTimeDiff = Infinity;
+  // Bugungi va ertangi kun uchun barcha namoz vaqtlarini tekshiramiz
+  const allPrayers = [];
   
+  // Bugungi kun
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
     
@@ -78,40 +78,37 @@ function getNextPrayerWithTime(times) {
     
     let timeDiff = prayerTotal - currentTotal;
     
+    // Agar vaqt o'tib bo'lsa, ertangi kunga qo'shamiz
     if (timeDiff < 0) {
       timeDiff += 24 * 60;
     }
     
-    if (timeDiff > 0 && timeDiff < minTimeDiff) {
-      minTimeDiff = timeDiff;
-      nextPrayer = {
-        prayer: prayer,
-        prayerName: prayerNames[prayer],
-        time: prayerTime,
-        remaining: getTimeRemaining(currentTime, prayerTime)
-      };
-    }
+    allPrayers.push({
+      prayer: prayer,
+      prayerName: prayerNames[prayer],
+      time: prayerTime,
+      timeDiff: timeDiff
+    });
   }
   
-  if (!nextPrayer) {
-    const tomorrowFajrTime = times['Fajr'];
-    const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
-    nextPrayer = {
-      prayer: 'Fajr',
-      prayerName: prayerNames['Fajr'],
-      time: tomorrowFajrTime,
-      remaining: timeRemaining
-    };
-  }
+  // Eng yaqin namozni topamiz
+  const nextPrayer = allPrayers.reduce((closest, prayer) => {
+    return (prayer.timeDiff < closest.timeDiff) ? prayer : closest;
+  });
   
-  return nextPrayer;
+  return {
+    prayer: nextPrayer.prayer,
+    prayerName: nextPrayer.prayerName,
+    time: nextPrayer.time,
+    remaining: getTimeRemaining(currentTime, nextPrayer.time)
+  };
 }
 
 // Foydalanuvchilarni saqlash
 const users = new Set();
 const userRatings = {};
 
-// VILOYATLAR VA TUMANLAR - BU YERNI O'ZINGIZ YOZASIZ
+// VILOYATLAR VA TUMANLAR - BU YERNI O'ZINGIZ TO'LDIRASIZ
 const regions = {
   "Toshkent shahri": {
     districts: {
@@ -444,7 +441,7 @@ bot.action(/region_(.+)/, (ctx) => {
   );
 });
 
-// Tuman tanlash
+// Tuman tanlash - XATO BOSHQARUVI QO'SHILDI
 bot.action(/district_(.+)/, async (ctx) => {
   const district = ctx.match[1];
   const userId = ctx.from.id;
@@ -465,10 +462,10 @@ bot.action(/district_(.+)/, async (ctx) => {
     return ctx.answerCbQuery("Xatolik yuz berdi!");
   }
 
-  await ctx.answerCbQuery();
-  await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
-
   try {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
+
     const response = await fetch(
       `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2`
     );
@@ -500,35 +497,34 @@ bot.action(/district_(.+)/, async (ctx) => {
       [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')]
     ]);
 
-    ctx.editMessageText(message, {
+    await ctx.editMessageText(message, {
       parse_mode: 'Markdown',
       ...keyboard
     });
   } catch (err) {
-    console.error("API xatosi:", err);
+    console.error("Xatolik:", err);
     
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')],
       [Markup.button.callback(`🔄 Qayta urinish`, `district_${district}`)]
     ]);
     
-    ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
+    await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
       parse_mode: 'Markdown',
       ...keyboard
     });
   }
 });
 
-// Bot haqida
-bot.action('bot_info', (ctx) => {
+// Bot haqida - MARKDOWN TUZATILDI
+bot.action('bot_info', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
   const averageRating = totalRatings > 0 
     ? (Object.values(userRatings).reduce((a, b) => a + b, 0) / totalRatings).toFixed(1)
     : "0.0";
   
-  const message = `
-ℹ️ **Bot Haqida**
+  const message = `ℹ️ **Bot Haqida**
 
 🤖 **Namoz Vaqtlari Boti**
 Version: 2.0
@@ -541,8 +537,7 @@ Version: 2.0
 
 👨‍💻 **Dasturchi:** Nomonov
 
-*"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)
-  `;
+*"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)`;
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⭐ Baholang', 'rate_bot')],
@@ -550,133 +545,42 @@ Version: 2.0
     [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
   ]);
   
-  ctx.editMessageText(message, {
-    parse_mode: 'Markdown',
-    ...keyboard
-  });
-});
-
-// Baholash tizimi
-bot.action('rate_bot', (ctx) => {
-  const userId = ctx.from.id;
-  
-  if (userRatings[userId]) {
-    const userRating = userRatings[userId];
-    const message = `
-⭐ **Siz allaqachon baholagansiz**
-
-Siz botimizga ${userRating} ⭐ baho bergansiz.
-
-Agar bahoingizni o'zgartirmoqchi bo'lsangiz, "Bahoni o'zgartirish" tugmasini bosing.
-    `;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('✏️ Bahoni o\'zgartirish', 'change_rating')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
-    ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      ...keyboard
-    });
-  } else {
-    const message = `
-⭐ **Botni Baholang**
-
-Botimiz sizga qanchalik yoqdi? Baholang:
-    `;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
-      [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
-      [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
-    ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      ...keyboard
-    });
-  }
-});
-
-// Baholarni qayta ishlash
-const ratingHandlers = {
-  'rate_1': 1, 'rate_2': 2, 'rate_3': 3, 'rate_4': 4, 'rate_5': 5
-};
-
-for (const [action, rating] of Object.entries(ratingHandlers)) {
-  bot.action(action, async (ctx) => {
-    const userId = ctx.from.id;
-    
-    const oldRating = userRatings[userId];
-    userRatings[userId] = rating;
-    
-    if (oldRating) {
-      await ctx.answerCbQuery(`✅ Baho ${oldRating} dan ${rating} ga o'zgartirildi!`);
-    } else {
-      await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
-    }
-    
-    const message = `
-✅ **${oldRating ? 'Baho o\'zgartirildi!' : 'Rahmat! Baholaganingiz uchun tashakkur!'}**
-
-${oldRating ? `Sizning bahoingiz ${oldRating} ⭐ dan ${rating} ⭐ ga o'zgartirildi.` : `Siz ${rating} ⭐ baho berdingiz.`}
-    `;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📢 Boshqalarga ulashing', 'share_bot')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
+  try {
     await ctx.editMessageText(message, {
       parse_mode: 'Markdown',
       ...keyboard
     });
-  });
-}
-
-bot.action('change_rating', (ctx) => {
-  const message = `
-✏️ **Bahoni O'zgartirish**
-
-Yangi bahoni tanlang:
-  `;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
-    [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
-    [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
-    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-  ]);
-  
-  ctx.editMessageText(message, {
-    parse_mode: 'Markdown',
-    ...keyboard
-  });
+  } catch (error) {
+    // Xabar o'zgartirish xatosini e'tiborsiz qoldirish
+    console.log("Xabar o'zgartirish xatosi:", error.message);
+  }
 });
 
-// Ulashish
-bot.action('share_bot', (ctx) => {
-  const message = `
-📢 **Botni Ulashing**
+// Ulashish - MARKDOWN TUZATILDI
+bot.action('share_bot', async (ctx) => {
+  const message = `📢 **Botni Ulashing**
 
 Do'stlaringizga botni ulashing va savobga tushing!
 
 🤖 **Bot nomi:** Namoz Vaqtlari Boti
-🔗 **Havola:** https://t.me/namoz_vaqtlari_bugun_bot
-  `;
+🔗 **Havola:** https://t.me/namoz_vaqtlari_bugun_bot`;
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌%20Namoz%20vaqtlarini%20bilib%20oling!')],
     [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
   ]);
   
-  ctx.editMessageText(message, {
-    parse_mode: 'Markdown',
-    ...keyboard
-  });
+  try {
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      ...keyboard
+    });
+  } catch (error) {
+    console.log("Xabar o'zgartirish xatosi:", error.message);
+  }
 });
+
+// Qolgan funksiyalar...
 
 // Har qanday xabarga javob
 bot.on('message', (ctx) => {
@@ -711,7 +615,7 @@ bot.action('start_bot', (ctx) => {
   );
 });
 
-// SERVER FOR RENDER - ENG OXIRIDA
+// SERVER FOR RENDER
 const PORT = process.env.PORT || 3000;
 
 const server = createServer((req, res) => {
@@ -728,7 +632,7 @@ setInterval(() => {
   console.log('❤️ Bot jonli... ' + new Date().toLocaleString());
 }, 600000);
 
-// FAQAT BIR MARTA bot.launch() - ENG OXIRIDA
+// Botni ishga tushirish
 bot.launch().then(() => {
   console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
 }).catch(err => {
