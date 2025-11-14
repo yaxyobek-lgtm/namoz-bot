@@ -4,7 +4,7 @@ import { createServer } from 'http';
 
 const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df02LTB0ylfAPOonWGs");
 
-// Bot haqida ma'lumot - MARKDOWN TUZATILDI
+// Bot haqida ma'lumot
 function getBotInfo(firstName) {
   return `🕌 **Namoz Vaqtlari Boti**
 
@@ -30,7 +30,7 @@ const prayerNames = {
   'Isha': '🌙 Xufton'
 };
 
-// Qolgan vaqtni hisoblash - YANGILANDI
+// Qolgan vaqtni hisoblash
 function getTimeRemaining(currentTime, prayerTime) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const [prayerHours, prayerMinutes] = prayerTime.split(':').map(Number);
@@ -40,7 +40,6 @@ function getTimeRemaining(currentTime, prayerTime) {
   
   let diff = prayerTotal - currentTotal;
   
-  // Agar vaqt o'tib bo'lsa, keyingi kunga o'tkazamiz
   if (diff < 0) {
     diff += 24 * 60;
   }
@@ -63,10 +62,10 @@ function getNextPrayerWithTime(times) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const currentTotal = currentHours * 60 + currentMinutes;
   
-  // Bugungi va ertangi kun uchun barcha namoz vaqtlarini tekshiramiz
-  const allPrayers = [];
+  let nextPrayer = null;
+  let minTimeDiff = Infinity;
   
-  // Bugungi kun
+  // Barcha namoz vaqtlarini tekshiramiz
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
     
@@ -83,32 +82,38 @@ function getNextPrayerWithTime(times) {
       timeDiff += 24 * 60;
     }
     
-    allPrayers.push({
-      prayer: prayer,
-      prayerName: prayerNames[prayer],
-      time: prayerTime,
-      timeDiff: timeDiff
-    });
+    // Faqat kelajakdagi vaqtlarni hisoblaymiz
+    if (timeDiff > 0 && timeDiff < minTimeDiff) {
+      minTimeDiff = timeDiff;
+      nextPrayer = {
+        prayer: prayer,
+        prayerName: prayerNames[prayer],
+        time: prayerTime,
+        remaining: getTimeRemaining(currentTime, prayerTime)
+      };
+    }
   }
   
-  // Eng yaqin namozni topamiz
-  const nextPrayer = allPrayers.reduce((closest, prayer) => {
-    return (prayer.timeDiff < closest.timeDiff) ? prayer : closest;
-  });
+  // Agar hamma vaqtlar o'tib bo'lsa, ertangi Bomdodni ko'rsatamiz
+  if (!nextPrayer) {
+    const tomorrowFajrTime = times['Fajr'];
+    const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
+    nextPrayer = {
+      prayer: 'Fajr',
+      prayerName: prayerNames['Fajr'],
+      time: tomorrowFajrTime,
+      remaining: timeRemaining
+    };
+  }
   
-  return {
-    prayer: nextPrayer.prayer,
-    prayerName: nextPrayer.prayerName,
-    time: nextPrayer.time,
-    remaining: getTimeRemaining(currentTime, nextPrayer.time)
-  };
+  return nextPrayer;
 }
 
 // Foydalanuvchilarni saqlash
 const users = new Set();
 const userRatings = {};
 
-// VILOYATLAR VA TUMANLAR - BU YERNI O'ZINGIZ TO'LDIRASIZ
+// VILOYATLAR VA TUMANLAR
 const regions = {
   "Toshkent shahri": {
     districts: {
@@ -441,7 +446,7 @@ bot.action(/region_(.+)/, (ctx) => {
   );
 });
 
-// Tuman tanlash - XATO BOSHQARUVI QO'SHILDI
+// Tuman tanlash
 bot.action(/district_(.+)/, async (ctx) => {
   const district = ctx.match[1];
   const userId = ctx.from.id;
@@ -510,13 +515,12 @@ bot.action(/district_(.+)/, async (ctx) => {
     ]);
     
     await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
-      parse_mode: 'Markdown',
       ...keyboard
     });
   }
 });
 
-// Bot haqida - MARKDOWN TUZATILDI
+// Bot haqida
 bot.action('bot_info', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
@@ -552,35 +556,81 @@ Version: 2.0
     });
   } catch (error) {
     // Xabar o'zgartirish xatosini e'tiborsiz qoldirish
-    console.log("Xabar o'zgartirish xatosi:", error.message);
   }
 });
 
-// Ulashish - MARKDOWN TUZATILDI
+// Baholash tizimi
+bot.action('rate_bot', (ctx) => {
+  const userId = ctx.from.id;
+  
+  const message = `⭐ **Botni Baholang**
+
+Botimiz sizga qanchalik yoqdi? Baholang:`;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
+    [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
+    [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
+    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+  ]);
+  
+  ctx.editMessageText(message, {
+    parse_mode: 'Markdown',
+    ...keyboard
+  });
+});
+
+// Baholarni qayta ishlash
+const ratingHandlers = {
+  'rate_1': 1, 'rate_2': 2, 'rate_3': 3, 'rate_4': 4, 'rate_5': 5
+};
+
+for (const [action, rating] of Object.entries(ratingHandlers)) {
+  bot.action(action, async (ctx) => {
+    const userId = ctx.from.id;
+    
+    userRatings[userId] = rating;
+    
+    await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
+    
+    const message = `✅ **Rahmat! Baholaganingiz uchun tashakkur!**
+
+Siz ${rating} ⭐ baho berdingiz.`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📢 Boshqalarga ulashing', 'share_bot')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      ...keyboard
+    });
+  });
+}
+
+// Ulashish - TO'LIQ TUZATILDI
 bot.action('share_bot', async (ctx) => {
   const message = `📢 **Botni Ulashing**
 
 Do'stlaringizga botni ulashing va savobga tushing!
 
-🤖 **Bot nomi:** Namoz Vaqtlari Boti
-🔗 **Havola:** https://t.me/namoz_vaqtlari_bugun_bot`;
+🤖 Bot nomi: Namoz Vaqtlari Boti
+🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot`;
   
   const keyboard = Markup.inlineKeyboard([
-    [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌%20Namoz%20vaqtlarini%20bilib%20oling!')],
+    [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌 Namoz vaqtlarini bilib oling!')],
     [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
   ]);
   
   try {
     await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
       ...keyboard
     });
   } catch (error) {
     console.log("Xabar o'zgartirish xatosi:", error.message);
   }
 });
-
-// Qolgan funksiyalar...
 
 // Har qanday xabarga javob
 bot.on('message', (ctx) => {
