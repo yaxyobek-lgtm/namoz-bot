@@ -6,17 +6,17 @@ const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df
 
 // Bot haqida ma'lumot
 function getBotInfo(firstName) {
-  return `🕌 **Namoz Vaqtlari Boti**
+  return `🕌 Namoz Vaqtlari Boti
 
 Assalomu alaykum ${firstName || "do'st"}! 😊 Bu bot orqali siz:
 
-✅ **Bugungi namoz vaqtlarini** bilib olishingiz mumkin
-✅ **O'zbekistonning barcha viloyat va tumanlari** uchun aniq vaqtlar
-✅ **Qolgan vaqtni** ko'rish (keyingi namozgacha qancha vaqt qolgani)
+✅ Bugungi namoz vaqtlarini bilib olishingiz mumkin
+✅ O'zbekistonning barcha viloyat va tumanlari uchun aniq vaqtlar
+✅ Qolgan vaqtni ko'rish (keyingi namozgacha qancha vaqt qolgani)
 
 Botdan foydalanish uchun /start buyrug'ini bering yoki pastdagi tugmalardan foydalaning.
 
-🤲 *"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)`;
+🤲 "Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
 }
 
 // Namoz vaqtlarini tartibda saqlash
@@ -54,7 +54,7 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish - TO'LIQ YANGILANDI
+// Keyingi namoz va qolgan vaqtni topish
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -65,7 +65,6 @@ function getNextPrayerWithTime(times) {
   let nextPrayer = null;
   let minTimeDiff = Infinity;
   
-  // Barcha namoz vaqtlarini tekshiramiz
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
     
@@ -77,12 +76,10 @@ function getNextPrayerWithTime(times) {
     
     let timeDiff = prayerTotal - currentTotal;
     
-    // Agar vaqt o'tib bo'lsa, ertangi kunga qo'shamiz
     if (timeDiff < 0) {
       timeDiff += 24 * 60;
     }
     
-    // Faqat kelajakdagi vaqtlarni hisoblaymiz
     if (timeDiff > 0 && timeDiff < minTimeDiff) {
       minTimeDiff = timeDiff;
       nextPrayer = {
@@ -94,7 +91,6 @@ function getNextPrayerWithTime(times) {
     }
   }
   
-  // Agar hamma vaqtlar o'tib bo'lsa, ertangi Bomdodni ko'rsatamiz
   if (!nextPrayer) {
     const tomorrowFajrTime = times['Fajr'];
     const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
@@ -380,7 +376,6 @@ bot.start((ctx) => {
   ctx.reply(
     getBotInfo(firstName),
     {
-      parse_mode: 'Markdown',
       ...keyboard
     }
   );
@@ -397,7 +392,6 @@ bot.action('back_to_main', (ctx) => {
   ctx.editMessageText(
     getBotInfo(firstName),
     {
-      parse_mode: 'Markdown',
       ...keyboard
     }
   );
@@ -413,9 +407,8 @@ bot.action('prayer_times', (ctx) => {
   ]);
   
   ctx.editMessageText(
-    "🕌 **Namoz Vaqtlari**\n\nIltimos, viloyatni tanlang:",
+    "🕌 Namoz Vaqtlari\n\nIltimos, viloyatni tanlang:",
     {
-      parse_mode: 'Markdown',
       ...keyboard
     }
   );
@@ -490,12 +483,12 @@ bot.action(/district_(.+)/, async (ctx) => {
       message += `${prayerNames[prayer]}: ${times[prayer]}\n`;
     }
     
-    message += `\n⏰ **Keyingi namoz:** ${nextPrayer.prayerName}\n`;
-    message += `🕒 **Vaqt:** ${nextPrayer.time}\n`;
-    message += `⏳ **Qolgan vaqt:** ${nextPrayer.remaining}\n\n`;
+    message += `\n⏰ Keyingi namoz: ${nextPrayer.prayerName}\n`;
+    message += `🕒 Vaqt: ${nextPrayer.time}\n`;
+    message += `⏳ Qolgan vaqt: ${nextPrayer.remaining}\n\n`;
     
     message += `📍 ${regionFound}\n\n`;
-    message += `🤲 *"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)`;
+    message += `🤲 "Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🔄 Vaqtlarni yangilash', `district_${district}`)],
@@ -503,7 +496,6 @@ bot.action(/district_(.+)/, async (ctx) => {
     ]);
 
     await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
       ...keyboard
     });
   } catch (err) {
@@ -528,20 +520,20 @@ bot.action('bot_info', async (ctx) => {
     ? (Object.values(userRatings).reduce((a, b) => a + b, 0) / totalRatings).toFixed(1)
     : "0.0";
   
-  const message = `ℹ️ **Bot Haqida**
+  const message = `ℹ️ Bot Haqida
 
-🤖 **Namoz Vaqtlari Boti**
+🤖 Namoz Vaqtlari Boti
 Version: 2.0
 
-📊 **Statistika:**
+📊 Statistika:
 • ${Object.keys(regions).length} ta viloyat
 • ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman va shahar
 • ${totalUsers} ta foydalanuvchi
 • ⭐ ${averageRating} (${totalRatings} ta baho)
 
-👨‍💻 **Dasturchi:** Nomonov
+👨‍💻 Dasturchi: Nomonov
 
-*"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)`;
+"Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⭐ Baholang', 'rate_bot')],
@@ -551,7 +543,6 @@ Version: 2.0
   
   try {
     await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
       ...keyboard
     });
   } catch (error) {
@@ -561,9 +552,7 @@ Version: 2.0
 
 // Baholash tizimi
 bot.action('rate_bot', (ctx) => {
-  const userId = ctx.from.id;
-  
-  const message = `⭐ **Botni Baholang**
+  const message = `⭐ Botni Baholang
 
 Botimiz sizga qanchalik yoqdi? Baholang:`;
   
@@ -575,7 +564,6 @@ Botimiz sizga qanchalik yoqdi? Baholang:`;
   ]);
   
   ctx.editMessageText(message, {
-    parse_mode: 'Markdown',
     ...keyboard
   });
 });
@@ -593,7 +581,7 @@ for (const [action, rating] of Object.entries(ratingHandlers)) {
     
     await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
     
-    const message = `✅ **Rahmat! Baholaganingiz uchun tashakkur!**
+    const message = `✅ Rahmat! Baholaganingiz uchun tashakkur!
 
 Siz ${rating} ⭐ baho berdingiz.`;
     
@@ -603,15 +591,14 @@ Siz ${rating} ⭐ baho berdingiz.`;
     ]);
     
     await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
       ...keyboard
     });
   });
 }
 
-// Ulashish - TO'LIQ TUZATILDI
+// Ulashish - MARKDOWN O'CHIRILDI
 bot.action('share_bot', async (ctx) => {
-  const message = `📢 **Botni Ulashing**
+  const message = `📢 Botni Ulashing
 
 Do'stlaringizga botni ulashing va savobga tushing!
 
@@ -659,7 +646,6 @@ bot.action('start_bot', (ctx) => {
   ctx.editMessageText(
     getBotInfo(firstName),
     {
-      parse_mode: 'Markdown',
       ...keyboard
     }
   );
