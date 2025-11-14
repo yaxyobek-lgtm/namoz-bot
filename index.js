@@ -54,16 +54,18 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish
+// Keyingi namoz va qolgan vaqtni topish - TO'LIQ YANGILANDI
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   
+  console.log(`🕒 Joriy vaqt: ${currentTime}`);
+  
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const currentTotal = currentHours * 60 + currentMinutes;
   
-  let nextPrayer = null;
-  let minTimeDiff = Infinity;
+  // Barcha namoz vaqtlarini tekshiramiz
+  const prayers = [];
   
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
@@ -76,33 +78,34 @@ function getNextPrayerWithTime(times) {
     
     let timeDiff = prayerTotal - currentTotal;
     
+    // Agar vaqt o'tib bo'lsa, ertangi kunga qo'shamiz
     if (timeDiff < 0) {
       timeDiff += 24 * 60;
     }
     
-    if (timeDiff > 0 && timeDiff < minTimeDiff) {
-      minTimeDiff = timeDiff;
-      nextPrayer = {
-        prayer: prayer,
-        prayerName: prayerNames[prayer],
-        time: prayerTime,
-        remaining: getTimeRemaining(currentTime, prayerTime)
-      };
-    }
+    prayers.push({
+      prayer: prayer,
+      prayerName: prayerNames[prayer],
+      time: prayerTime,
+      timeDiff: timeDiff
+    });
+    
+    console.log(`📅 ${prayerNames[prayer]}: ${prayerTime} (${timeDiff} daqiqa qolgan)`);
   }
   
-  if (!nextPrayer) {
-    const tomorrowFajrTime = times['Fajr'];
-    const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
-    nextPrayer = {
-      prayer: 'Fajr',
-      prayerName: prayerNames['Fajr'],
-      time: tomorrowFajrTime,
-      remaining: timeRemaining
-    };
-  }
+  // Eng yaqin namozni topamiz
+  const nextPrayer = prayers.reduce((closest, prayer) => {
+    return prayer.timeDiff < closest.timeDiff ? prayer : closest;
+  });
   
-  return nextPrayer;
+  console.log(`⏰ Keyingi namoz: ${nextPrayer.prayerName} (${nextPrayer.timeDiff} daqiqa)`);
+  
+  return {
+    prayer: nextPrayer.prayer,
+    prayerName: nextPrayer.prayerName,
+    time: nextPrayer.time,
+    remaining: getTimeRemaining(currentTime, nextPrayer.time)
+  };
 }
 
 // Foydalanuvchilarni saqlash
@@ -512,13 +515,17 @@ bot.action(/district_(.+)/, async (ctx) => {
   }
 });
 
-// Bot haqida
+// Bot haqida - YANGILANDI (baholar statistikasi)
 bot.action('bot_info', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
-  const averageRating = totalRatings > 0 
-    ? (Object.values(userRatings).reduce((a, b) => a + b, 0) / totalRatings).toFixed(1)
-    : "0.0";
+  
+  // O'rtacha bahoni hisoblash
+  let averageRating = "0.0";
+  if (totalRatings > 0) {
+    const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+    averageRating = (sum / totalRatings).toFixed(1);
+  }
   
   const message = `ℹ️ Bot Haqida
 
@@ -550,11 +557,63 @@ Version: 2.0
   }
 });
 
-// Baholash tizimi
+// Baholash tizimi - YANGILANDI
 bot.action('rate_bot', (ctx) => {
-  const message = `⭐ Botni Baholang
+  const userId = ctx.from.id;
+  
+  // Agar foydalanuvchi allaqachon baholagan bo'lsa
+  if (userRatings[userId]) {
+    const userRating = userRatings[userId];
+    const totalRatings = Object.keys(userRatings).length;
+    
+    // O'rtacha bahoni hisoblash
+    let averageRating = "0.0";
+    if (totalRatings > 0) {
+      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+      averageRating = (sum / totalRatings).toFixed(1);
+    }
+    
+    const message = `⭐ Siz allaqachon baholagansiz
+
+Siz botimizga ${userRating} ⭐ baho bergansiz.
+
+📊 Joriy statistika:
+• ⭐ ${averageRating} (${totalRatings} ta baho)
+• ${users.size} ta foydalanuvchi
+
+Agar bahoingizni o'zgartirmoqchi bo'lsangiz, "Bahoni o'zgartirish" tugmasini bosing.`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('✏️ Bahoni o\'zgartirish', 'change_rating')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } else {
+    const message = `⭐ Botni Baholang
 
 Botimiz sizga qanchalik yoqdi? Baholang:`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
+      [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
+      [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    ctx.editMessageText(message, {
+      ...keyboard
+    });
+  }
+});
+
+// Bahoni o'zgartirish
+bot.action('change_rating', (ctx) => {
+  const message = `✏️ Bahoni O'zgartirish
+
+Yangi bahoni tanlang:`;
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
@@ -576,14 +635,33 @@ const ratingHandlers = {
 for (const [action, rating] of Object.entries(ratingHandlers)) {
   bot.action(action, async (ctx) => {
     const userId = ctx.from.id;
+    const firstName = ctx.from.first_name || "Foydalanuvchi";
     
+    const oldRating = userRatings[userId];
     userRatings[userId] = rating;
     
-    await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
+    const totalRatings = Object.keys(userRatings).length;
     
-    const message = `✅ Rahmat! Baholaganingiz uchun tashakkur!
+    // O'rtacha bahoni hisoblash
+    let averageRating = "0.0";
+    if (totalRatings > 0) {
+      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+      averageRating = (sum / totalRatings).toFixed(1);
+    }
+    
+    if (oldRating) {
+      await ctx.answerCbQuery(`✅ Baho ${oldRating} dan ${rating} ga o'zgartirildi!`);
+    } else {
+      await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
+    }
+    
+    const message = `✅ ${oldRating ? 'Baho o\'zgartirildi!' : 'Rahmat! Baholaganingiz uchun tashakkur!'}
 
-Siz ${rating} ⭐ baho berdingiz.`;
+${oldRating ? `Sizning bahoingiz ${oldRating} ⭐ dan ${rating} ⭐ ga o'zgartirildi.` : `Siz ${rating} ⭐ baho berdingiz.`}
+
+📊 Yangi statistika:
+• ⭐ ${averageRating} (${totalRatings} ta baho)
+• ${users.size} ta foydalanuvchi`;
     
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('📢 Boshqalarga ulashing', 'share_bot')],
@@ -596,7 +674,7 @@ Siz ${rating} ⭐ baho berdingiz.`;
   });
 }
 
-// Ulashish - MARKDOWN O'CHIRILDI
+// Ulashish
 bot.action('share_bot', async (ctx) => {
   const message = `📢 Botni Ulashing
 
