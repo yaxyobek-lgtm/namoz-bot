@@ -4,6 +4,24 @@ import { createServer } from 'http';
 
 const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df02LTB0ylfAPOonWGs");
 
+// Bot tavsifi
+const BOT_DESCRIPTION = `🕌 Namoz Vaqtlari Boti - O'zbekiston bo'ylab aniq namoz vaqtlari
+
+Assalomu alaykum! Bu bot orqali siz O'zbekistonning barcha viloyat va tumanlari uchun aniq namoz vaqtlarini bilib olishingiz mumkin.
+
+📅 **Xususiyatlar:**
+• Bugungi namoz vaqtlari
+• Barcha viloyat va tumanlar uchun
+• Keyingi namozgacha qolgan vaqt
+• Haftalik statistika
+• Juma kuni tabrik xabari
+
+🕋 **Qur'ondan oyat:** 
+*"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)
+
+🤖 Bot: @namoz_vaqtlari_bugun_bot
+👨‍💻 Dasturchi: Nomonov`;
+
 // Bot haqida ma'lumot
 function getBotInfo(firstName) {
   return `🕌 Namoz Vaqtlari Boti
@@ -13,6 +31,8 @@ Assalomu alaykum ${firstName || "do'st"}! 😊 Bu bot orqali siz:
 ✅ Bugungi namoz vaqtlarini bilib olishingiz mumkin
 ✅ O'zbekistonning barcha viloyat va tumanlari uchun aniq vaqtlar
 ✅ Qolgan vaqtni ko'rish (keyingi namozgacha qancha vaqt qolgani)
+✅ Haftalik foydalanuvchi statistikasi
+✅ Juma kuni maxsus tabrik xabari
 
 Botdan foydalanish uchun /start buyrug'ini bering yoki pastdagi tugmalardan foydalaning.
 
@@ -54,18 +74,16 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish - UNIVERSAL YECHIM
+// Keyingi namoz va qolgan vaqtni topish
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   
-  console.log(`🕒 Joriy vaqt: ${currentTime}`);
-  
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const currentTotal = currentHours * 60 + currentMinutes;
   
-  // Barcha namoz vaqtlarini tekshiramiz
-  const prayers = [];
+  let nextPrayer = null;
+  let minTimeDiff = Infinity;
   
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
@@ -78,68 +96,67 @@ function getNextPrayerWithTime(times) {
     
     let timeDiff = prayerTotal - currentTotal;
     
-    // Agar vaqt o'tib bo'lsa, ertangi kunga qo'shamiz
     if (timeDiff < 0) {
       timeDiff += 24 * 60;
     }
     
-    prayers.push({
-      prayer: prayer,
-      prayerName: prayerNames[prayer],
-      time: prayerTime,
-      timeDiff: timeDiff
-    });
-    
-    console.log(`📅 ${prayerNames[prayer]}: ${prayerTime} (${timeDiff} daqiqa qolgan)`);
+    if (timeDiff > 0 && timeDiff < minTimeDiff) {
+      minTimeDiff = timeDiff;
+      nextPrayer = {
+        prayer: prayer,
+        prayerName: prayerNames[prayer],
+        time: prayerTime,
+        remaining: getTimeRemaining(currentTime, prayerTime)
+      };
+    }
   }
   
-  // Eng yaqin namozni topamiz
-  if (prayers.length === 0) {
-    return {
+  if (!nextPrayer) {
+    const tomorrowFajrTime = times['Fajr'];
+    const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
+    nextPrayer = {
       prayer: 'Fajr',
       prayerName: prayerNames['Fajr'],
-      time: times['Fajr'],
-      remaining: "0 daqiqa"
+      time: tomorrowFajrTime,
+      remaining: timeRemaining
     };
   }
   
-  const nextPrayer = prayers.reduce((closest, prayer) => {
-    return prayer.timeDiff < closest.timeDiff ? prayer : closest;
-  });
-  
-  console.log(`⏰ Keyingi namoz: ${nextPrayer.prayerName} (${nextPrayer.timeDiff} daqiqa)`);
-  
-  return {
-    prayer: nextPrayer.prayer,
-    prayerName: nextPrayer.prayerName,
-    time: nextPrayer.time,
-    remaining: getTimeRemaining(currentTime, nextPrayer.time)
-  };
+  return nextPrayer;
 }
 
-// Vaqtni tekshirish funksiyasi - YANGI
-function checkPrayerTimes(times) {
-  const now = new Date();
-  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  
-  console.log("=== Vaqt tekshiruvi ===");
-  console.log(`Joriy vaqt: ${currentTime}`);
-  
-  for (const prayer of prayerOrder) {
-    if (prayer === 'Sunrise') continue;
-    console.log(`${prayerNames[prayer]}: ${times[prayer]}`);
-  }
-  
-  const nextPrayer = getNextPrayerWithTime(times);
-  console.log(`Keyingi namoz: ${nextPrayer.prayerName}`);
-  console.log("======================");
-}
-
-// Foydalanuvchilarni saqlash
-const users = new Set();
+// Foydalanuvchilarni saqlash - YANGILANDI
+const users = new Map(); // ID va oxirgi faollik sanasi
 const userRatings = {};
+const userStats = {
+  totalStarts: 0,
+  dailyStarts: 0,
+  lastReset: new Date().toDateString()
+};
 
-// VILOYATLAR VA TUMANLAR - O'ZBEKISTONNING BARCHA VILOYATLARI
+// Haftalik statistikani yangilash
+function updateDailyStats() {
+  const today = new Date().toDateString();
+  if (userStats.lastReset !== today) {
+    userStats.dailyStarts = 0;
+    userStats.lastReset = today;
+  }
+}
+
+// Juma tabriki
+function getFridayMessage() {
+  const fridayMessages = [
+    `📿 **Juma muborak bo'lsin!**\n\n"Ey imonli kishilar! Juma kuni namozga chaqirilgach, savdo-sotiqni tashlab, Allohning zikriga shoshiling. Agar bilgan bo'lsangiz, bu siz uchun yaxshidir." (Al-Jumu'a: 9)\n\n🤲 Juma namozi o'qing va duo qiling!`,
+    
+    `🕌 **Juma tongi muborak!**\n\n"Albatta, eng yaxshi kunlaringizdan biri - Juma kuni. Bugun duo qiling, chunki duolar ijobat qilinadi." (Hadisi Sharif)\n\n📖 Qur'on o'qing va savob ishlang!`,
+    
+    `🌟 **Juma barakoti bilan!**\n\n"Juma kuni soat bor. Shu soatda musulmon banda Allohdan biror narsa so'rasa, Alloh uni beradi." (Hadisi Sharif)\n\n🤲 Bu kunning barakatidan bahramand bo'ling!`
+  ];
+  
+  return fridayMessages[Math.floor(Math.random() * fridayMessages.length)];
+}
+
+// VILOYATLAR VA TUMANLAR
 const regions = {
   "Toshkent shahri": {
     districts: {
@@ -391,16 +408,40 @@ const regions = {
 // Foydalanuvchi holatini saqlash
 const userState = {};
 
-// Start buyrug'i
+// Start buyrug'i - YANGILANDI
 bot.start((ctx) => {
   const userId = ctx.from.id;
   const firstName = ctx.from.first_name;
+  const username = ctx.from.username;
   
-  users.add(userId);
+  // Statistikani yangilash
+  updateDailyStats();
+  userStats.totalStarts++;
+  userStats.dailyStarts++;
+  
+  // Foydalanuvchini qo'shish
+  users.set(userId, {
+    name: firstName,
+    username: username,
+    firstSeen: new Date(),
+    lastSeen: new Date(),
+    startCount: (users.get(userId)?.startCount || 0) + 1
+  });
+  
+  console.log(`👤 Yangi foydalanuvchi: ${firstName} (${username || 'username yo\'q'}) - Jami: ${users.size}`);
+  
+  // Juma kuni bo'lsa, tabrik xabarini jo'natish
+  const today = new Date();
+  if (today.getDay() === 5) { // 5 = Juma
+    setTimeout(() => {
+      ctx.reply(getFridayMessage());
+    }, 2000);
+  }
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')]
+    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')]
   ]);
   
   ctx.reply(
@@ -411,12 +452,63 @@ bot.start((ctx) => {
   );
 });
 
+// Statistika ko'rsatish - YANGI
+bot.action('show_stats', async (ctx) => {
+  const totalUsers = users.size;
+  const totalRatings = Object.keys(userRatings).length;
+  
+  let averageRating = "0.0";
+  if (totalRatings > 0) {
+    const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+    averageRating = (sum / totalRatings).toFixed(1);
+  }
+  
+  // Faol foydalanuvchilar (oxirgi 7 kun)
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  const activeUsers = Array.from(users.values()).filter(user => 
+    new Date(user.lastSeen) > oneWeekAgo
+  ).length;
+  
+  const message = `📊 Bot Statistikasi
+
+👥 Foydalanuvchilar:
+• Jami: ${totalUsers} ta
+• Faol (7 kun): ${activeUsers} ta
+• Bugun: ${userStats.dailyStarts} marta
+
+⭐ Baholar:
+• O'rtacha: ${averageRating} ⭐
+• Jami baholar: ${totalRatings} ta
+
+📈 Umumiy:
+• Start bosish: ${userStats.totalStarts} marta
+• Viloyatlar: ${Object.keys(regions).length} ta
+• Tumanlar: ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ ta
+
+🔄 Oxirgi yangilanish: ${new Date().toLocaleString()}`;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('🔄 Yangilash', 'show_stats')],
+    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
+  ]);
+  
+  try {
+    await ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } catch (error) {
+    await ctx.reply(message, { ...keyboard });
+  }
+});
+
 // Asosiy menyuga qaytish
 bot.action('back_to_main', (ctx) => {
   const firstName = ctx.from.first_name;
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')]
+    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')]
   ]);
   
   ctx.editMessageText(
@@ -429,6 +521,14 @@ bot.action('back_to_main', (ctx) => {
 
 // Namoz vaqtlari menyusi
 bot.action('prayer_times', (ctx) => {
+  // Foydalanuvchi faolligini yangilash
+  const userId = ctx.from.id;
+  if (users.has(userId)) {
+    const user = users.get(userId);
+    user.lastSeen = new Date();
+    users.set(userId, user);
+  }
+  
   const keyboard = Markup.inlineKeyboard([
     ...Object.keys(regions).map(region => 
       [Markup.button.callback(region, `region_${region}`)]
@@ -469,7 +569,7 @@ bot.action(/region_(.+)/, (ctx) => {
   );
 });
 
-// Tuman tanlash - BARCHA TUMANLAR UCHUN BIR XIL ISHLAYDI
+// Tuman tanlash
 bot.action(/district_(.+)/, async (ctx) => {
   const district = ctx.match[1];
   const userId = ctx.from.id;
@@ -494,7 +594,6 @@ bot.action(/district_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
 
-    // API so'rovi - timezone ni aniq belgilaymiz
     const response = await fetch(
       `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
     );
@@ -504,9 +603,6 @@ bot.action(/district_(.+)/, async (ctx) => {
 
     const times = data.data.timings;
     const date = data.data.date.readable;
-    
-    // Vaqtlarni tekshirish
-    checkPrayerTimes(times);
     
     const nextPrayer = getNextPrayerWithTime(times);
     
@@ -546,9 +642,7 @@ bot.action(/district_(.+)/, async (ctx) => {
   }
 });
 
-// ... qolgan funksiyalar (bot_info, rating, share) bir xil ...
-
-// Bot haqida
+// Bot haqida - YANGILANDI
 bot.action('bot_info', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
@@ -562,13 +656,19 @@ bot.action('bot_info', async (ctx) => {
   const message = `ℹ️ Bot Haqida
 
 🤖 Namoz Vaqtlari Boti
-Version: 2.0
+Version: 2.1
 
 📊 Statistika:
 • ${Object.keys(regions).length} ta viloyat
 • ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman va shahar
 • ${totalUsers} ta foydalanuvchi
 • ⭐ ${averageRating} (${totalRatings} ta baho)
+
+🌟 Yangi xususiyatlar:
+• Foydalanuvchi statistikasi
+• Juma kuni tabrik xabari
+• Haftalik faollik ko'rsatkichi
+• Real vaqtda yangilanish
 
 👨‍💻 Dasturchi: Nomonov
 
@@ -577,6 +677,7 @@ Version: 2.0
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('⭐ Baholang', 'rate_bot')],
     [Markup.button.callback('📢 Ulashing', 'share_bot')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')],
     [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
   ]);
   
@@ -707,7 +808,12 @@ bot.action('share_bot', async (ctx) => {
 Do'stlaringizga botni ulashing va savobga tushing!
 
 🤖 Bot nomi: Namoz Vaqtlari Boti
-🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot`;
+🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot
+  
+📊 Bot statistikasi:
+• ${users.size} ta foydalanuvchi
+• ${Object.keys(regions).length} ta viloyat
+• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman`;
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌 Namoz vaqtlarini bilib oling!')],
@@ -727,7 +833,15 @@ Do'stlaringizga botni ulashing va savobga tushing!
 bot.on('message', (ctx) => {
   if (ctx.message.text && !ctx.message.text.startsWith('/')) {
     const firstName = ctx.from.first_name;
-    users.add(ctx.from.id);
+    const userId = ctx.from.id;
+    
+    users.set(userId, {
+      name: firstName,
+      username: ctx.from.username,
+      firstSeen: new Date(),
+      lastSeen: new Date(),
+      startCount: (users.get(userId)?.startCount || 0) + 1
+    });
     
     ctx.reply(
       `Assalomu alaykum ${firstName || "do'st"}! Botdan foydalanish uchun /start buyrug'ini bering:`,
@@ -744,7 +858,8 @@ bot.action('start_bot', (ctx) => {
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')]
+    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')]
   ]);
   
   ctx.editMessageText(
@@ -755,26 +870,48 @@ bot.action('start_bot', (ctx) => {
   );
 });
 
+// Juma kuni tabrik xabarini avtomatik jo'natish
+function sendFridayGreeting() {
+  const now = new Date();
+  if (now.getDay() === 5 && now.getHours() === 8) { // Juma, soat 8:00
+    const fridayMessage = getFridayMessage();
+    
+    users.forEach((user, userId) => {
+      try {
+        bot.telegram.sendMessage(userId, fridayMessage);
+        console.log(`📿 Juma tabriki jo'natildi: ${user.name}`);
+      } catch (error) {
+        console.log(`❌ Juma tabriki jo'natilmadi: ${user.name}`);
+      }
+    });
+  }
+}
+
 // SERVER FOR RENDER
 const PORT = process.env.PORT || 3000;
 
 const server = createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('🕌 Namoz Vaqtlari Boti ishlayapti!\n');
+  res.end(BOT_DESCRIPTION);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server ${PORT} portida ishga tushdi`);
 });
 
-// Keep-alive
+// Keep-alive va Juma tekshiruvi
 setInterval(() => {
   console.log('❤️ Bot jonli... ' + new Date().toLocaleString());
-}, 600000);
+  console.log(`👥 Foydalanuvchilar: ${users.size} ta`);
+  
+  // Juma tabrikini tekshirish
+  sendFridayGreeting();
+}, 600000); // 10 daqiqa
 
 // Botni ishga tushirish
 bot.launch().then(() => {
   console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
+  console.log(`📊 Boshlang'ich statistika: ${users.size} ta foydalanuvchi`);
 }).catch(err => {
   console.error('❌ Botni ishga tushirishda xatolik:', err);
 });
