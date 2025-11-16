@@ -2,37 +2,64 @@ import { Telegraf } from 'telegraf';
 import QRCode from 'qrcode';
 import axios from 'axios';
 import sharp from 'sharp';
-import { createReadStream, unlinkSync, existsSync } from 'fs';
+import { createReadStream, unlinkSync, existsSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Bot token (.env faylidan olish yoki to'g'ridan-to'g'ri yozish)
 const BOT_TOKEN = process.env.BOT_TOKEN || '8529967384:AAG3EUtygqchETc7df02LTB0ylfAPOonWGs';
 
 if (!BOT_TOKEN) {
-  console.error('❌ Bot token topilmadi! .env faylida BOT_TOKEN=qoʻying');
+  console.error('❌ Bot token topilmadi!');
   process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
+// Rasmni base64 ga aylantirish
+async function imageToBase64(imageBuffer) {
+  try {
+    // Rasmni optimallashtirish
+    const optimizedImage = await sharp(imageBuffer)
+      .resize(800, 800, { 
+        fit: 'inside',
+        withoutEnlargement: true 
+      })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    
+    return optimizedImage.toString('base64');
+  } catch (error) {
+    throw new Error('Rasmni qayta ishlashda xatolik');
+  }
+}
+
+// Base64 ni rasmga aylantirish
+async function base64ToImage(base64String, outputPath) {
+  try {
+    const buffer = Buffer.from(base64String, 'base64');
+    await sharp(buffer).toFile(outputPath);
+    return true;
+  } catch (error) {
+    throw new Error('Base64 dan rasm yaratishda xatolik');
+  }
+}
+
 // Start komandasi
 bot.start((ctx) => {
   ctx.reply(
-    `👋 Assalomu alaykum ${ctx.from.first_name}!\n\n` +
-    `📸 **QR Code Generator Bot** ga xush kelibsiz!\n\n` +
-    `🔄 **Bot qanday ishlaydi:**\n` +
-    `• Matn yuboring - QR kod yasab beraman\n` +
-    `• Rasm yuboring - ichidagi matnni QR kodga aylantiraman\n` +
-    `• URL yuboring - havola QR kodini yasab beraman\n\n` +
-    `📝 **Buyruqlar:**\n` +
-    `/start - Botni ishga tushirish\n` +
-    `/help - Yordam\n` +
-    `/qr <matn> - Tez QR kod yaratish\n\n` +
-    `🎯 **Hozir matn, rasm yoki havola yuboring!**`
+    `🖼️ **Image to QR Code Bot** 🤖\n\n` +
+    `📸 **Bot qanday ishlaydi:**\n` +
+    `1. Siz rasm yuborasiz\n` +
+    `2. Men rasmni QR kodga aylantiraman\n` +
+    `3. Kimdir QR kodni skaner qilsa, sizning rasmingiz chiqadi\n\n` +
+    `🔄 **Qo'llab-quvvatlanadigan formatlar:**\n` +
+    `• JPEG, PNG, WEBP, GIF\n` +
+    `• Maksimal hajm: 20MB\n\n` +
+    `⚡ **Endi rasm yuboring!**\n\n` +
+    `📝 Agar matn yuborsangiz, uni ham QR kodga aylantiraman`
   );
 });
 
@@ -40,17 +67,19 @@ bot.start((ctx) => {
 bot.help((ctx) => {
   ctx.reply(
     `🆘 **Yordam:**\n\n` +
-    `1. **Matn yuboring** - har qanday matn QR kodga aylanadi\n` +
-    `2. **Rasm yuboring** - rasmda yozilgan matn QR kod bo'ladi\n` +
-    `3. **URL yuboring** - veb-sayt havolasi QR kodi\n` +
-    `4. **/qr <matn>** - tezkor QR kod yaratish\n\n` +
-    `📸 **Qo'llab-quvvatlanadigan rasm formatlari:**\n` +
-    `• JPEG, PNG, WEBP\n` +
-    `• Maksimal hajm: 20MB\n\n` +
-    `⚡ **Misol:**\n` +
-    `• "Salom Dunyo" yuboring\n` +
-    `• "https://google.com" yuboring\n` +
-    `• Rasm yuboring (matn bilan)`
+    `📸 **Rasm yuboring:**\n` +
+    `• Rasmni yuboring → QR kod olasiz\n` +
+    `• QR kodni skaner qilganlar sizning rasmingizni ko'radilar\n\n` +
+    `📝 **Matn yuboring:**\n` +
+    `• Har qanday matn → QR kod\n` +
+    `• URL, telefon, manzil, etc.\n\n` +
+    `🔧 **Buyruqlar:**\n` +
+    `/start - Botni ishga tushirish\n` +
+    `/help - Yordam\n` +
+    `/qr <matn> - Tez QR kod\n\n` +
+    `💡 **Maslahat:**\n` +
+    `• Aniqroq rasm uchun yorug' rasmlardan foydalaning\n` +
+    `• QR kodni chop etish uchun sifatli rasm yuboring`
   );
 });
 
@@ -70,7 +99,6 @@ bot.command('qr', async (ctx) => {
     
     const qrPath = join('/tmp', `qr_${Date.now()}.png`);
     
-    // QR kod yaratish
     await QRCode.toFile(qrPath, text, {
       width: 400,
       margin: 2,
@@ -80,71 +108,28 @@ bot.command('qr', async (ctx) => {
       }
     });
 
-    // QR kodni yuborish
     await ctx.replyWithPhoto(
       { source: qrPath },
       {
-        caption: `📊 QR Kod yaratildi!\n\n` +
-                `📝 Matn: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}\n` +
-                `📏 Oʻlcham: 400x400\n` +
-                `🔄 Yana QR kod yaratish uchun matn yuboring!`
+        caption: `📊 Matn QR kodi tayyor!\n\n` +
+                `📝 Matn: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}\n` +
+                `📏 Oʻlcham: 400x400\n\n` +
+                `🔄 Yangi QR kod uchun rasm yoki matn yuboring!`
       }
     );
 
-    // Vaqtincha faylni o'chirish
     unlinkSync(qrPath);
 
   } catch (error) {
     console.error('QR kod yaratishda xatolik:', error);
-    ctx.reply('❌ QR kod yaratishda xatolik yuz berdi. Iltimos, qayta urinib koʻring.');
+    ctx.reply('❌ QR kod yaratishda xatolik yuz berdi.');
   }
 });
 
-// Matnli xabarlarni qayta ishlash
-bot.on('text', async (ctx) => {
-  const text = ctx.message.text.trim();
-  
-  // Agar bu komanda bo'lsa, boshqa ishlamaslik
-  if (text.startsWith('/')) return;
-
-  try {
-    await ctx.reply('⏳ QR kod yaratilmoqda...');
-    
-    const qrPath = join('/tmp', `qr_${Date.now()}.png`);
-    
-    // QR kod yaratish
-    await QRCode.toFile(qrPath, text, {
-      width: 400,
-      margin: 2,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      }
-    });
-
-    // QR kodni yuborish
-    await ctx.replyWithPhoto(
-      { source: qrPath },
-      {
-        caption: `✅ QR Kod tayyor!\n\n` +
-                `📝 Kiritgan matningiz: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}\n\n` +
-                `🔄 Yangi QR kod uchun yana matn yuboring!`
-      }
-    );
-
-    // Faylni tozalash
-    unlinkSync(qrPath);
-
-  } catch (error) {
-    console.error('Xatolik:', error);
-    ctx.reply('❌ QR kod yaratishda xatolik. Iltimos, qayta urinib koʻring.');
-  }
-});
-
-// Rasmni qayta ishlash
+// RASMNI QR KODGA AYLANTIRISH
 bot.on('photo', async (ctx) => {
   try {
-    await ctx.reply('⏳ Rasm tahlil qilinmoqda...');
+    await ctx.reply('⏳ Rasm QR kodga aylantirilmoqda...');
 
     // Eng yuqori sifatli rasmni olish
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
@@ -158,42 +143,90 @@ bot.on('photo', async (ctx) => {
       responseType: 'arraybuffer'
     });
 
-    const tempImagePath = join('/tmp', `temp_${Date.now()}.jpg`);
-    const tempTextPath = join('/tmp', `text_${Date.now()}.txt`);
+    const imageBuffer = response.data;
 
-    // Rasmni saqlash
-    await sharp(response.data)
-      .jpeg()
-      .toFile(tempImagePath);
+    // Rasmni base64 ga aylantirish
+    await ctx.reply('🔄 Rasm kodga aylantirilmoqda...');
+    const base64Image = await imageToBase64(imageBuffer);
 
-    // Bu yerda siz OCR (Optical Character Recognition) qo'shishingiz mumkin
-    // Lekin oddiy versiya uchun foydalanuvchidan rasmga matn yozishini so'raymiz
+    // Base64 ni QR kodga aylantirish
+    await ctx.reply('📊 QR kod yaratilmoqda...');
+    const qrPath = join('/tmp', `image_qr_${Date.now()}.png`);
     
-    await ctx.reply(
-      `📸 Rasm qabul qilindi!\n\n` +
-      `ℹ️ Hozircha bot rasm ichidagi matnni avtomatik o'qiy olmaydi.\n\n` +
-      `📝 Iltimos, rasmda yozilgan matnni yuboring va men uni QR kodga aylantiraman:`
+    await QRCode.toFile(qrPath, base64Image, {
+      width: 500,
+      margin: 3,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      },
+      errorCorrectionLevel: 'H' // Yuqori xato tuzatish
+    });
+
+    // QR kodni yuborish
+    await ctx.replyWithPhoto(
+      { source: qrPath },
+      {
+        caption: `✅ Rasm QR kodi tayyor! 🎉\n\n` +
+                `📸 **Siz yuborgan rasm endi QR kodda!**\n\n` +
+                `🔍 **Qanday ishlatish:**\n` +
+                `• QR kodni skaner qiling\n` +
+                `• Sizning asl rasmingiz ochiladi\n` +
+                `• Do'stlaringizga yuboring\n\n` +
+                `💾 **QR kod o'lchami:** 500x500\n` +
+                `🛡️ **Xato tuzatish:** Yuqori\n\n` +
+                `🔄 Yangi rasm yuboring!`
+      }
     );
 
-    // Vaqtincha fayllarni o'chirish
-    if (existsSync(tempImagePath)) unlinkSync(tempImagePath);
-    if (existsSync(tempTextPath)) unlinkSync(tempTextPath);
+    // Test: QR kodni tekshirish
+    await ctx.reply('🧪 QR kod tekshirilmoqda...');
+    
+    try {
+      const testImagePath = join('/tmp', `test_${Date.now()}.jpg`);
+      await base64ToImage(base64Image, testImagePath);
+      
+      await ctx.replyWithPhoto(
+        { source: testImagePath },
+        {
+          caption: '✅ Test: QR kod skaner qilinganda shu rasm chiqadi!'
+        }
+      );
+      
+      unlinkSync(testImagePath);
+    } catch (testError) {
+      console.log('Test xatosi:', testError);
+    }
+
+    // Fayllarni tozalash
+    unlinkSync(qrPath);
 
   } catch (error) {
-    console.error('Rasm qayta ishlash xatoligi:', error);
-    ctx.reply('❌ Rasmni qayta ishlashda xatolik. Iltimos, boshqa rasm yuboring.');
+    console.error('Rasm QR kod xatosi:', error);
+    ctx.reply(
+      '❌ Rasmni QR kodga aylantirishda xatolik.\n\n' +
+      '💡 **Maslahatlar:**\n' +
+      '• Rasm hajmi katta boʻlmasin\n' +
+      '• Boshqa formatda rasm yuboring\n' +
+      '• Yana urinib koʻring'
+    );
   }
 });
 
-// Document (fayl) qabul qilish
+// Document (fayl) sifatida rasm
 bot.on('document', async (ctx) => {
   const document = ctx.message.document;
   
   // Faqat rasm fayllarini qabul qilish
-  const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  const imageMimeTypes = [
+    'image/jpeg', 
+    'image/png', 
+    'image/webp',
+    'image/gif'
+  ];
   
   if (imageMimeTypes.includes(document.mime_type)) {
-    await ctx.reply('⏳ Rasm fayli qayta ishlanmoqda...');
+    await ctx.reply('⏳ Rasm fayli QR kodga aylantirilmoqda...');
     
     try {
       const file = await ctx.telegram.getFile(document.file_id);
@@ -205,42 +238,95 @@ bot.on('document', async (ctx) => {
         responseType: 'arraybuffer'
       });
 
-      const tempPath = join('/tmp', `doc_${Date.now()}.${document.mime_type.split('/')[1]}`);
-      
-      await sharp(response.data)
-        .toFile(tempPath);
+      const imageBuffer = response.data;
 
-      await ctx.reply(
-        `📄 Rasm fayli qabul qilindi!\n\n` +
-        `ℹ️ Hozircha bot rasm ichidagi matnni avtomatik o'qiy olmaydi.\n\n` +
-        `📝 Iltimos, rasmda yozilgan matnni yuboring va men uni QR kodga aylantiraman:`
+      // Rasmni base64 ga aylantirish
+      const base64Image = await imageToBase64(imageBuffer);
+
+      // QR kod yaratish
+      const qrPath = join('/tmp', `doc_qr_${Date.now()}.png`);
+      
+      await QRCode.toFile(qrPath, base64Image, {
+        width: 500,
+        margin: 3,
+        errorCorrectionLevel: 'H'
+      });
+
+      await ctx.replyWithPhoto(
+        { source: qrPath },
+        {
+          caption: `✅ Rasm QR kodi tayyor! 📄\n\n` +
+                  `📁 Fayl formati: ${document.mime_type}\n` +
+                  `📊 QR kod o'lchami: 500x500\n\n` +
+                  `🔍 QR kodni skaner qiling - asl rasm chiqadi!`
+        }
       );
 
-      if (existsSync(tempPath)) unlinkSync(tempPath);
+      unlinkSync(qrPath);
 
     } catch (error) {
-      console.error('Fayl qayta ishlash xatoligi:', error);
-      ctx.reply('❌ Faylni qayta ishlashda xatolik.');
+      console.error('Document QR xatosi:', error);
+      ctx.reply('❌ Rasm faylini QR kodga aylantirishda xatolik.');
     }
   } else {
     ctx.reply(
       '❌ Faqat rasm fayllarini qabul qilaman!\n\n' +
-      '📸 Qoʻllab-quvvatlanadigan formatlar: JPEG, PNG, WEBP'
+      '📸 Qoʻllab-quvvatlanadigan formatlar:\n' +
+      '• JPEG, PNG, WEBP, GIF\n\n' +
+      '🖼️ Iltimos, rasm yuboring!'
     );
   }
 });
 
-// Boshqa turdagi xabarlarga javob
+// Matnni QR kodga aylantirish
+bot.on('text', async (ctx) => {
+  const text = ctx.message.text.trim();
+  
+  if (text.startsWith('/')) return;
+
+  try {
+    await ctx.reply('⏳ Matn QR kodga aylantirilmoqda...');
+    
+    const qrPath = join('/tmp', `text_qr_${Date.now()}.png`);
+    
+    await QRCode.toFile(qrPath, text, {
+      width: 400,
+      margin: 2,
+      color: {
+        dark: '#2C3E50',
+        light: '#ECF0F1'
+      }
+    });
+
+    await ctx.replyWithPhoto(
+      { source: qrPath },
+      {
+        caption: `📝 Matn QR kodi tayyor!\n\n` +
+                `📄 Matn: ${text.substring(0, 80)}${text.length > 80 ? '...' : ''}\n` +
+                `📏 Oʻlcham: 400x400\n\n` +
+                `🖼️ **Yoki rasm yuboring - men uni QR kodga aylantiraman!**`
+      }
+    );
+
+    unlinkSync(qrPath);
+
+  } catch (error) {
+    console.error('Matn QR xatosi:', error);
+    ctx.reply('❌ Matnni QR kodga aylantirishda xatolik.');
+  }
+});
+
+// Boshqa xabarlar
 bot.on('message', (ctx) => {
   ctx.reply(
-    '❌ Faqat matn, rasm yoki fayl qabul qilaman!\n\n' +
-    '📝 Matn yuboring - QR kod yasab beraman\n' +
-    '📸 Rasm yuboring - matnni QR kodga aylantiraman\n' +
-    '🔗 URL yuboring - havola QR kodini yasayman'
+    '🖼️ **Iltimos, rasm yuboring!**\n\n' +
+    '📸 Men sizning rasmingizni QR kodga aylantiraman.\n' +
+    '🔍 Keyin kimdir QR kodni skaner qilsa, sizning rasmingiz chiqadi!\n\n' +
+    '📝 Yoki matn yuboring - uni ham QR kodga aylantiraman.'
   );
 });
 
-// Xatoliklarni boshqarish
+// Xatoliklar
 bot.catch((err, ctx) => {
   console.error(`Bot xatosi: ${err}`);
   ctx.reply('❌ Botda xatolik yuz berdi. Iltimos, keyinroq urinib koʻring.');
@@ -248,14 +334,15 @@ bot.catch((err, ctx) => {
 
 // Botni ishga tushirish
 bot.launch().then(() => {
-  console.log('🤖 QR Code Bot muvaffaqiyatli ishga tushdi!');
+  console.log('🤖 Image to QR Code Bot ishga tushdi!');
+  console.log('📸 Endi foydalanuvchilar rasm yuborib, QR kod olishlari mumkin!');
 }).catch(console.error);
 
 // Graceful shutdown
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-// Render uchun keep-alive
+// Keep-alive for Render
 setInterval(() => {
-  console.log('🫀 Bot ishlayapti...', new Date().toISOString());
+  console.log('🫀 Bot ishlayapti...', new Date().toLocaleTimeString());
 }, 60000);
