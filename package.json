@@ -1,7 +1,7 @@
 {
   "name": "perfect-check-bot",
   "version": "1.0.0",
-  "description": "Mukammal chek rasmi yaratish boti",
+  "description": "Mukammal chek rasmi yaratish boti!",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
