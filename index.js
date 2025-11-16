@@ -7,17 +7,17 @@ const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df
 // Bot tavsifi
 const BOT_DESCRIPTION = `🕌 Namoz Vaqtlari Boti - O'zbekiston bo'ylab aniq namoz vaqtlari
 
-Assalomu alaykum! Bu bot orqali siz O'zbekistonning barcha viloyat va tumanlari uchun aniq namoz vaqtlarini bilib olishingiz mumkin.
+Assalomu alaykum! Bu bot orqali siz O'zbekistonning barcha viloyat va tumanlari uchun aniq namoz vaqtlari bilib olishingiz mumkin.
 
-📅 **Xususiyatlar:**
+📅 Xususiyatlar:
 • Bugungi namoz vaqtlari
 • Barcha viloyat va tumanlar uchun
 • Keyingi namozgacha qolgan vaqt
 • Haftalik statistika
 • Juma kuni tabrik xabari
 
-🕋 **Qur'ondan oyat:** 
-*"Albatta, namoz mo'minlarga vaqtida farz qilindi"* (An-Niso: 103)
+🕋 Qur'ondan oyat: 
+"Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)
 
 🤖 Bot: @namoz_vaqtlari_bugun_bot
 👨‍💻 Dasturchi: Nomonov`;
@@ -50,20 +50,20 @@ const prayerNames = {
   'Isha': '🌙 Xufton'
 };
 
-// Qolgan vaqtni hisoblash
+// Qolgan vaqtni hisoblash - TO'G'RILANDI
 function getTimeRemaining(currentTime, prayerTime) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const [prayerHours, prayerMinutes] = prayerTime.split(':').map(Number);
   
-  const currentTotal = currentHours * 60 + currentMinutes;
-  const prayerTotal = prayerHours * 60 + prayerMinutes;
+  let currentTotal = currentHours * 60 + currentMinutes;
+  let prayerTotal = prayerHours * 60 + prayerMinutes;
   
-  let diff = prayerTotal - currentTotal;
-  
-  if (diff < 0) {
-    diff += 24 * 60;
+  // Agar namoz vaqti o'tib bo'lsa, ertangi kunga qo'shamiz
+  if (prayerTotal < currentTotal) {
+    prayerTotal += 24 * 60;
   }
   
+  const diff = prayerTotal - currentTotal;
   const hours = Math.floor(diff / 60);
   const minutes = diff % 60;
   
@@ -74,7 +74,7 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish
+// Keyingi namoz va qolgan vaqtni topish - TO'G'RILANDI
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -85,6 +85,7 @@ function getNextPrayerWithTime(times) {
   let nextPrayer = null;
   let minTimeDiff = Infinity;
   
+  // Barcha namoz vaqtlarini tekshiramiz
   for (const prayer of prayerOrder) {
     if (prayer === 'Sunrise') continue;
     
@@ -92,25 +93,28 @@ function getNextPrayerWithTime(times) {
     if (!prayerTime) continue;
     
     const [prayerHours, prayerMinutes] = prayerTime.split(':').map(Number);
-    const prayerTotal = prayerHours * 60 + prayerMinutes;
+    let prayerTotal = prayerHours * 60 + prayerMinutes;
     
-    let timeDiff = prayerTotal - currentTotal;
-    
-    if (timeDiff < 0) {
-      timeDiff += 24 * 60;
+    // Agar namoz vaqti o'tib bo'lsa, ertangi kunga qo'shamiz
+    if (prayerTotal < currentTotal) {
+      prayerTotal += 24 * 60;
     }
     
+    const timeDiff = prayerTotal - currentTotal;
+    
+    // Eng yaqin namozni topamiz
     if (timeDiff > 0 && timeDiff < minTimeDiff) {
       minTimeDiff = timeDiff;
       nextPrayer = {
         prayer: prayer,
         prayerName: prayerNames[prayer],
         time: prayerTime,
-        remaining: getTimeRemaining(currentTime, prayerTime)
+        remaining: getTimeRemaining(currentTime, times[prayer])
       };
     }
   }
   
+  // Agar hamma namozlar o'tib bo'lsa, ertangi bomdodni ko'rsatamiz
   if (!nextPrayer) {
     const tomorrowFajrTime = times['Fajr'];
     const timeRemaining = getTimeRemaining(currentTime, tomorrowFajrTime);
@@ -118,15 +122,15 @@ function getNextPrayerWithTime(times) {
       prayer: 'Fajr',
       prayerName: prayerNames['Fajr'],
       time: tomorrowFajrTime,
-      remaining: timeRemaining
+      remaining: timeRemaining + " (ertangi)"
     };
   }
   
   return nextPrayer;
 }
 
-// Foydalanuvchilarni saqlash - YANGILANDI
-const users = new Map(); // ID va oxirgi faollik sanasi
+// Foydalanuvchilarni saqlash
+const users = new Map();
 const userRatings = {};
 const userStats = {
   totalStarts: 0,
@@ -147,260 +151,254 @@ function updateDailyStats() {
 function getFridayMessage() {
   const fridayMessages = [
     `📿 **Juma muborak bo'lsin!**\n\n"Ey imonli kishilar! Juma kuni namozga chaqirilgach, savdo-sotiqni tashlab, Allohning zikriga shoshiling. Agar bilgan bo'lsangiz, bu siz uchun yaxshidir." (Al-Jumu'a: 9)\n\n🤲 Juma namozi o'qing va duo qiling!`,
-    
     `🕌 **Juma tongi muborak!**\n\n"Albatta, eng yaxshi kunlaringizdan biri - Juma kuni. Bugun duo qiling, chunki duolar ijobat qilinadi." (Hadisi Sharif)\n\n📖 Qur'on o'qing va savob ishlang!`,
-    
-    `🌟 **Juma barakoti bilan!**\n\n"Juma kuni soat bor. Shu soatda musulmon banda Allohdan biror narsa so'rasa, Alloh uni beradi." (Hadisi Sharif)\n\n🤲 Bu kunning barakatidan bahramand bo'ling!`
+    `🌟 **Juma barakoti bilan!**\n\n"Juma kuni soat bor. Shu soatda musulmon banda Allohdan biror narsa so'rsa, Alloh uni beradi." (Hadisi Sharif)\n\n🤲 Bu kunning barakatidan bahramand bo'ling!`
   ];
   
   return fridayMessages[Math.floor(Math.random() * fridayMessages.length)];
 }
 
-// VILOYATLAR VA TUMANLAR
+// BARCHA VILOYAT VA TUMANLAR - TO'LIQ RO'YXAT
 const regions = {
   "Toshkent shahri": {
     districts: {
       "Yunusobod": { lat: 41.3515, lng: 69.2863 },
       "Chilonzor": { lat: 41.2754, lng: 69.2044 },
-      "Mirobod": { lat: 41.2974, lng: 69.2796 },
-      "Shayxontohur": { lat: 41.3230, lng: 69.2417 },
-      "Yakkasaroy": { lat: 41.2853, lng: 69.2510 },
-      "Sergeli": { lat: 41.2421, lng: 69.2050 },
-      "Olmazor": { lat: 41.3553, lng: 69.2163 },
-      "Uchtepa": { lat: 41.2999, lng: 69.1611 },
-      "Bektemir": { lat: 41.2091, lng: 69.3335 },
-      "Yashnobod": { lat: 41.3387, lng: 69.3200 },
-      "Mirzo Ulug'bek": { lat: 41.3380, lng: 69.3307 }
+      "Mirzo Ulug'bek": { lat: 41.3339, lng: 69.2275 },
+      "Mirobod": { lat: 41.3289, lng: 69.2314 },
+      "Olmazor": { lat: 41.3058, lng: 69.2406 },
+      "Sergeli": { lat: 41.2142, lng: 69.2367 },
+      "Shayxontohur": { lat: 41.3172, lng: 69.2408 },
+      "Yakkasaroy": { lat: 41.2825, lng: 69.2714 },
+      "Yashnobod": { lat: 41.2153, lng: 69.3019 },
+      "Uchtepa": { lat: 41.2658, lng: 69.3319 }
     }
   },
   "Toshkent viloyati": {
     districts: {
-      "Olmaliq shahar": { lat: 40.8448, lng: 69.5983 },
-      "Angren shahar": { lat: 41.0167, lng: 70.1436 },
-      "Bekobod shahar": { lat: 40.2208, lng: 69.2697 },
-      "Chirchiq shahar": { lat: 41.4689, lng: 69.5822 },
-      "Yangiyo'l shahar": { lat: 41.1122, lng: 69.0472 },
-      "Ohangaron shahar": { lat: 40.9064, lng: 69.6488 },
-      "Bekobod tumani": { lat: 40.2208, lng: 69.2697 },
-      "Bo'ka tumani": { lat: 40.8108, lng: 69.2014 },
-      "Bo'stonliq tumani": { lat: 41.5667, lng: 69.9000 },
-      "Chinoz tumani": { lat: 40.9361, lng: 68.7594 },
-      "Qibray tumani": { lat: 41.3890, lng: 69.4650 },
-      "Parkent tumani": { lat: 41.2942, lng: 69.6790 },
-      "Oqqo'rg'on tumani": { lat: 40.8786, lng: 69.3547 },
-      "Ohangaron tumani": { lat: 40.9064, lng: 69.6488 },
-      "Piskent tumani": { lat: 40.8972, lng: 69.3506 },
-      "Quyi Chirchiq tumani": { lat: 41.1950, lng: 69.2580 },
-      "O'rta Chirchiq tumani": { lat: 41.2220, lng: 69.1390 },
-      "Yuqori Chirchiq tumani": { lat: 41.2064, lng: 69.4086 },
-      "Zangiota tumani": { lat: 41.1920, lng: 69.1480 },
-      "Yangiyo'l tumani": { lat: 41.1120, lng: 69.0470 }
+      "Angren": { lat: 41.0167, lng: 70.1436 },
+      "Bekobod": { lat: 40.2203, lng: 69.2236 },
+      "Chirchiq": { lat: 41.4689, lng: 69.5822 },
+      "Olmaliq": { lat: 40.8500, lng: 69.6000 },
+      "Ohangaron": { lat: 40.9064, lng: 69.6383 },
+      "Parkent": { lat: 41.2944, lng: 69.6764 },
+      "Piskent": { lat: 40.8972, lng: 69.3500 },
+      "Quyi Chirchiq": { lat: 41.1167, lng: 69.3667 },
+      "O'rta Chirchiq": { lat: 41.2333, lng: 69.1500 },
+      "Yangiyo'l": { lat: 41.1122, lng: 69.0472 },
+      "Zangiota": { lat: 41.1928, lng: 69.1403 },
+      "Boka": { lat: 40.8111, lng: 69.1944 },
+      "Qibray": { lat: 41.3897, lng: 69.4650 },
+      "Yuqori Chirchiq": { lat: 41.3500, lng: 69.5833 },
+      "Oqqo'rg'on": { lat: 40.8789, lng: 72.5619 }
     }
   },
   "Farg'ona viloyati": {
     districts: {
       "Farg'ona shahar": { lat: 40.3864, lng: 71.7864 },
       "Marg'ilon shahar": { lat: 40.4714, lng: 71.7247 },
-      "Quvasoy shahar": { lat: 40.2972, lng: 71.9803 },
       "Qo'qon shahar": { lat: 40.5286, lng: 70.9425 },
-      "Beshariq tumani": { lat: 40.4360, lng: 70.6100 },
-      "Bog'dod tumani": { lat: 40.5370, lng: 71.8220 },
-      "Buvayda tumani": { lat: 40.7167, lng: 70.9000 },
-      "Dang'ara tumani": { lat: 40.5920, lng: 70.9170 },
-      "Furqat tumani": { lat: 40.5140, lng: 70.8140 },
-      "Oltiariq tumani": { lat: 40.3910, lng: 71.4740 },
-      "Qo'shtepa tumani": { lat: 40.5670, lng: 71.2170 },
-      "Quva tumani": { lat: 40.5240, lng: 72.0720 },
-      "Rishton tumani": { lat: 40.3570, lng: 71.2840 },
-      "So'x tumani": { lat: 39.9650, lng: 71.1340 },
-      "Toshloq tumani": { lat: 40.4770, lng: 71.7670 },
-      "Uchko'prik tumani": { lat: 40.4360, lng: 70.9420 },
-      "O'zbekiston tumani": { lat: 40.6890, lng: 71.0410 },
-      "Yozyovon tumani": { lat: 40.6550, lng: 71.7430 }
-    }
-  },
-  "Namangan viloyati": {
-    districts: {
-      "Namangan shahar": { lat: 40.9983, lng: 71.6726 },
-      "Chust shahar": { lat: 41.0039, lng: 71.2372 },
-      "Kosonsoy shahar": { lat: 41.2494, lng: 71.5472 },
-      "Chust tumani": { lat: 41.0039, lng: 71.2372 },
-      "Kosonsoy tumani": { lat: 41.2494, lng: 71.5472 },
-      "Mingbuloq tumani": { lat: 40.7630, lng: 70.9420 },
-      "Norin tumani": { lat: 40.9970, lng: 71.6370 },
-      "Pop tumani": { lat: 40.8736, lng: 71.1089 },
-      "To'raqo'rg'on tumani": { lat: 40.9970, lng: 71.5120 },
-      "Uchqo'rg'on tumani": { lat: 41.1130, lng: 72.0790 },
-      "Uychi tumani": { lat: 41.0750, lng: 71.9230 },
-      "Yangiqo'rg'on tumani": { lat: 41.1930, lng: 71.3390 },
-      "Chortoq tumani": { lat: 41.0690, lng: 71.8220 }
+      "Beshariq": { lat: 40.4358, lng: 70.6103 },
+      "Bog'dod": { lat: 40.5375, lng: 71.1083 },
+      "Buvayda": { lat: 40.6167, lng: 70.8333 },
+      "Dang'ara": { lat: 40.5917, lng: 70.9167 },
+      "Furqat": { lat: 40.5139, lng: 70.7647 },
+      "O'zbekiston": { lat: 40.4333, lng: 70.6000 },
+      "Quva": { lat: 40.5222, lng: 72.0667 },
+      "Rishton": { lat: 40.3567, lng: 71.2847 },
+      "So'x": { lat: 39.9667, lng: 71.1333 },
+      "Toshloq": { lat: 40.4667, lng: 71.7667 },
+      "Uchko'prik": { lat: 40.4333, lng: 70.9500 },
+      "O'zgan": { lat: 40.3667, lng: 71.5000 },
+      "Yozyovon": { lat: 40.6556, lng: 71.7444 }
     }
   },
   "Andijon viloyati": {
     districts: {
       "Andijon shahar": { lat: 40.7833, lng: 72.3333 },
-      "Xonobod shahar": { lat: 40.8040, lng: 72.9830 },
-      "Asaka shahar": { lat: 40.6410, lng: 72.2380 },
-      "Shahrixon tumani": { lat: 40.7130, lng: 72.0560 },
-      "Baliqchi tumani": { lat: 40.8660, lng: 72.0000 },
-      "Bo'z tumani": { lat: 40.6930, lng: 71.9130 },
-      "Buloqboshi tumani": { lat: 40.6080, lng: 72.4670 },
-      "Izboskan tumani": { lat: 40.9140, lng: 72.2430 },
-      "Jalaquduq tumani": { lat: 40.7420, lng: 72.5990 },
-      "Xo'jaobod tumani": { lat: 40.6680, lng: 72.5600 },
-      "Qo'rg'ontepa tumani": { lat: 40.7340, lng: 72.7610 },
-      "Marhamat tumani": { lat: 40.4800, lng: 72.3130 },
-      "Oltinko'l tumani": { lat: 40.8010, lng: 72.1940 },
-      "Paxtaobod tumani": { lat: 40.9290, lng: 72.4980 },
-      "Ulug'nor tumani": { lat: 40.7340, lng: 71.5900 }
+      "Xonobod shahar": { lat: 40.8694, lng: 72.9889 },
+      "Asaka": { lat: 40.6417, lng: 72.2389 },
+      "Baliqchi": { lat: 40.8667, lng: 72.0000 },
+      "Boz": { lat: 40.7333, lng: 71.9167 },
+      "Buloqboshi": { lat: 40.6167, lng: 72.4667 },
+      "Izboskan": { lat: 40.9167, lng: 72.2500 },
+      "Jalaquduq": { lat: 40.7500, lng: 72.6667 },
+      "Xo'jaobod": { lat: 40.6667, lng: 72.5667 },
+      "Qo'rg'ontepa": { lat: 40.7333, lng: 72.7667 },
+      "Marhamat": { lat: 40.5000, lng: 72.3167 },
+      "Oltinko'l": { lat: 40.8000, lng: 72.1667 },
+      "Paxtaobod": { lat: 40.9333, lng: 72.5000 },
+      "Shahrixon": { lat: 40.7167, lng: 72.0667 },
+      "Ulug'nor": { lat: 40.7333, lng: 71.7000 }
+    }
+  },
+  "Namangan viloyati": {
+    districts: {
+      "Namangan shahar": { lat: 40.9953, lng: 71.6725 },
+      "Kosonsoy": { lat: 41.2494, lng: 71.5472 },
+      "Mingbuloq": { lat: 40.7667, lng: 72.7000 },
+      "Norin": { lat: 40.9667, lng: 71.7167 },
+      "Pop": { lat: 40.8667, lng: 71.1167 },
+      "To'raqo'rg'on": { lat: 40.9967, lng: 71.5117 },
+      "Uchqo'rg'on": { lat: 41.1139, lng: 72.0792 },
+      "Chortoq": { lat: 41.0694, lng: 71.8233 },
+      "Chust": { lat: 41.0033, lng: 71.2378 },
+      "Yangiqo'rg'on": { lat: 41.1889, lng: 71.7319 },
+      "Uychi": { lat: 41.0806, lng: 71.9233 }
     }
   },
   "Samarqand viloyati": {
     districts: {
       "Samarqand shahar": { lat: 39.6542, lng: 66.9597 },
-      "Kattaqo'rg'on shahar": { lat: 39.8994, lng: 66.2611 },
-      "Bulung'ur tumani": { lat: 39.7667, lng: 67.2714 },
-      "Ishtixon tumani": { lat: 39.9667, lng: 66.4861 },
-      "Jomboy tumani": { lat: 39.6986, lng: 67.0933 },
-      "Koshrabot tumani": { lat: 39.9833, lng: 66.8333 },
-      "Narpay tumani": { lat: 39.9972, lng: 65.6167 },
-      "Nurobod tumani": { lat: 39.5000, lng: 66.0333 },
-      "Oqdaryo tumani": { lat: 39.9167, lng: 66.4333 },
-      "Paxtachi tumani": { lat: 40.2333, lng: 67.1833 },
-      "Payariq tumani": { lat: 39.8333, lng: 66.9333 },
-      "Pastdarg'om tumani": { lat: 39.7000, lng: 66.6667 },
-      "Qo'shrabot tumani": { lat: 40.0833, lng: 66.6667 },
-      "Toyloq tumani": { lat: 39.6333, lng: 67.1000 },
-      "Urgut tumani": { lat: 39.4022, lng: 67.2431 }
+      "Kattaqo'rg'on shahar": { lat: 39.9000, lng: 66.2500 },
+      "Bulung'ur": { lat: 39.7667, lng: 67.2667 },
+      "Ishtixon": { lat: 39.9667, lng: 66.4833 },
+      "Jomboy": { lat: 39.7000, lng: 67.0833 },
+      "Kattaqo'rg'on": { lat: 39.9000, lng: 66.2500 },
+      "Qo'shrabot": { lat: 40.1667, lng: 66.6667 },
+      "Narpay": { lat: 39.8333, lng: 65.6667 },
+      "Nurobod": { lat: 39.5000, lng: 66.2500 },
+      "Oqdaryo": { lat: 39.9167, lng: 66.1667 },
+      "Paxtachi": { lat: 40.2167, lng: 67.9500 },
+      "Payariq": { lat: 39.8333, lng: 66.9167 },
+      "Pastdarg'om": { lat: 39.7167, lng: 66.6667 },
+      "Toyloq": { lat: 39.5833, lng: 66.8333 },
+      "Urgut": { lat: 39.4022, lng: 67.2431 }
     }
   },
   "Buxoro viloyati": {
     districts: {
       "Buxoro shahar": { lat: 39.7667, lng: 64.4333 },
-      "Kogon shahar": { lat: 39.7222, lng: 64.5514 },
-      "Olot tumani": { lat: 39.4172, lng: 63.8033 },
-      "Peshku tumani": { lat: 40.4272, lng: 63.8533 },
-      "Romitan tumani": { lat: 39.9292, lng: 64.3792 },
-      "Shofirkon tumani": { lat: 40.1200, lng: 64.5014 },
-      "Qorako'l tumani": { lat: 39.8772, lng: 63.8542 },
-      "Qorovulbozor tumani": { lat: 39.5000, lng: 64.7933 },
-      "G'ijduvon tumani": { lat: 40.0992, lng: 64.6833 },
-      "Vobkent tumani": { lat: 40.0333, lng: 64.5167 },
-      "Jondor tumani": { lat: 40.1000, lng: 63.6667 }
-    }
-  },
-  "Navoiy viloyati": {
-    districts: {
-      "Navoiy shahar": { lat: 40.0844, lng: 65.3792 },
-      "Zarafshon shahar": { lat: 41.5764, lng: 64.2014 },
-      "Karmana tumani": { lat: 40.1433, lng: 65.3714 },
-      "Konimex tumani": { lat: 40.2750, lng: 65.1522 },
-      "Navbahor tumani": { lat: 40.1872, lng: 65.3714 },
-      "Nurota tumani": { lat: 40.5611, lng: 65.6944 },
-      "Qiziltepa tumani": { lat: 40.0333, lng: 64.8500 },
-      "Tomdi tumani": { lat: 42.0611, lng: 64.5139 },
-      "Uchquduq tumani": { lat: 42.1561, lng: 63.5528 },
-      "Xatirchi tumani": { lat: 40.1872, lng: 65.9250 }
-    }
-  },
-  "Qashqadaryo viloyati": {
-    districts: {
-      "Qarshi shahar": { lat: 38.8611, lng: 65.7897 },
-      "Shahrisabz shahar": { lat: 39.0578, lng: 66.8339 },
-      "Beshkent tumani": { lat: 38.8211, lng: 65.6533 },
-      "Chiroqchi tumani": { lat: 39.0333, lng: 66.5722 },
-      "Dehqonobod tumani": { lat: 38.3172, lng: 66.5833 },
-      "G'uzor tumani": { lat: 38.6200, lng: 66.2392 },
-      "Kasbi tumani": { lat: 38.9583, lng: 65.5264 },
-      "Kitob tumani": { lat: 39.1214, lng: 66.8861 },
-      "Koson tumani": { lat: 39.0372, lng: 65.5850 },
-      "Mirishkor tumani": { lat: 38.7583, lng: 65.5264 },
-      "Muborak tumani": { lat: 39.2550, lng: 65.1522 },
-      "Nishon tumani": { lat: 38.6931, lng: 65.6750 },
-      "Qamashi tumani": { lat: 38.8211, lng: 66.4561 },
-      "Yakkabog' tumani": { lat: 38.9761, lng: 66.6833 }
-    }
-  },
-  "Surxondaryo viloyati": {
-    districts: {
-      "Termiz shahar": { lat: 37.2242, lng: 67.2783 },
-      "Bandixon tumani": { lat: 37.9333, lng: 67.1833 },
-      "Boysun tumani": { lat: 38.2061, lng: 67.2061 },
-      "Denov tumani": { lat: 38.2672, lng: 67.8981 },
-      "Jarqo'rg'on tumani": { lat: 37.5122, lng: 67.4050 },
-      "Qiziriq tumani": { lat: 37.6642, lng: 67.2792 },
-      "Qumqo'rg'on tumani": { lat: 37.8272, lng: 67.5892 },
-      "Muzrabot tumani": { lat: 37.5711, lng: 66.6311 },
-      "Oltinsoy tumani": { lat: 38.1072, lng: 67.8922 },
-      "Sariosiyo tumani": { lat: 38.4172, lng: 67.9592 },
-      "Sherobod tumani": { lat: 37.6672, lng: 67.0161 },
-      "Sho'rchi tumani": { lat: 37.9992, lng: 67.7872 },
-      "Termiz tumani": { lat: 37.2242, lng: 67.2783 },
-      "Uzun tumani": { lat: 38.2172, lng: 68.1833 }
-    }
-  },
-  "Jizzax viloyati": {
-    districts: {
-      "Jizzax shahar": { lat: 40.1167, lng: 67.8500 },
-      "Arnasoy tumani": { lat: 40.5333, lng: 67.8333 },
-      "Baxmal tumani": { lat: 39.7500, lng: 67.5833 },
-      "Do'stlik tumani": { lat: 40.5333, lng: 68.0372 },
-      "Forish tumani": { lat: 40.3833, lng: 67.2333 },
-      "G'allaorol tumani": { lat: 40.1333, lng: 67.9500 },
-      "Mirzacho'l tumani": { lat: 40.7000, lng: 68.7667 },
-      "Paxtakor tumani": { lat: 40.3172, lng: 67.9542 },
-      "Yangiobod tumani": { lat: 40.5333, lng: 68.7667 },
-      "Zomin tumani": { lat: 39.9667, lng: 68.4000 },
-      "Zafarobod tumani": { lat: 40.3833, lng: 67.8333 },
-      "Zarbdor tumani": { lat: 40.1500, lng: 68.1500 }
-    }
-  },
-  "Sirdaryo viloyati": {
-    districts: {
-      "Guliston shahar": { lat: 40.4894, lng: 68.7842 },
-      "Yangiyer shahar": { lat: 40.2750, lng: 68.8222 },
-      "Shirin shahar": { lat: 40.2922, lng: 69.0472 },
-      "Boyovut tumani": { lat: 40.7200, lng: 69.3500 },
-      "Guliston tumani": { lat: 40.4894, lng: 68.7842 },
-      "Xovos tumani": { lat: 40.3000, lng: 68.8833 },
-      "Mirzaobod tumani": { lat: 40.6833, lng: 68.7667 },
-      "Oqoltin tumani": { lat: 40.6000, lng: 68.5333 },
-      "Sardoba tumani": { lat: 40.0333, lng: 68.8333 },
-      "Sayxunobod tumani": { lat: 40.6667, lng: 68.7667 }
+      "Kogon shahar": { lat: 39.7225, lng: 64.5517 },
+      "Olot": { lat: 39.4167, lng: 63.8000 },
+      "Buxoro tumani": { lat: 39.7667, lng: 64.4333 },
+      "Vobkent": { lat: 39.7167, lng: 64.5167 },
+      "G'ijduvon": { lat: 40.1000, lng: 64.6833 },
+      "Jondor": { lat: 39.7167, lng: 63.9000 },
+      "Kogon tumani": { lat: 39.7225, lng: 64.5517 },
+      "Qorako'l": { lat: 39.8333, lng: 63.8333 },
+      "Qorovulbozor": { lat: 39.5000, lng: 64.8000 },
+      "Peshku": { lat: 40.1667, lng: 63.5000 },
+      "Romitan": { lat: 39.9333, lng: 64.3833 },
+      "Shofirkon": { lat: 40.1167, lng: 64.5000 }
     }
   },
   "Xorazm viloyati": {
     districts: {
       "Urganch shahar": { lat: 41.5500, lng: 60.6333 },
       "Xiva shahar": { lat: 41.3842, lng: 60.3581 },
-      "Bog'ot tumani": { lat: 41.3222, lng: 60.8672 },
-      "Gurlan tumani": { lat: 41.8442, lng: 60.3911 },
-      "Xonqa tumani": { lat: 41.4272, lng: 60.8722 },
-      "Hazorasp tumani": { lat: 41.3192, lng: 61.0742 },
-      "Xiva tumani": { lat: 41.3842, lng: 60.3581 },
-      "Qo'shko'pir tumani": { lat: 41.5350, lng: 60.3450 },
-      "Shovot tumani": { lat: 41.6622, lng: 60.3022 },
+      "Bog'ot": { lat: 41.3167, lng: 60.8500 },
+      "Gurlan": { lat: 41.8333, lng: 60.3833 },
+      "Qo'shko'pir": { lat: 41.5350, lng: 60.3450 },
       "Urganch tumani": { lat: 41.5500, lng: 60.6333 },
-      "Yangiariq tumani": { lat: 41.3333, lng: 60.5583 },
-      "Yangibozor tumani": { lat: 41.7211, lng: 60.8972 }
+      "Xiva tumani": { lat: 41.3842, lng: 60.3581 },
+      "Xonqa": { lat: 41.4269, lng: 60.8667 },
+      "Yangiariq": { lat: 41.3333, lng: 60.5667 },
+      "Yangibozor": { lat: 41.7211, lng: 60.8972 },
+      "Shovot": { lat: 41.6558, lng: 60.3025 },
+      "Hazorasp": { lat: 41.3194, lng: 61.0742 }
     }
   },
-  "Qoraqalpog'iston": {
+  "Navoiy viloyati": {
     districts: {
-      "Nukus shahar": { lat: 42.4647, lng: 59.6142 },
-      "Amudaryo tumani": { lat: 42.1500, lng: 60.1000 },
-      "Beruniy tumani": { lat: 41.6911, lng: 60.7522 },
-      "Chimboy tumani": { lat: 42.9311, lng: 59.7772 },
-      "Ellikqala tumani": { lat: 41.9167, lng: 61.9167 },
-      "Kegayli tumani": { lat: 42.7772, lng: 59.4442 },
-      "Mo'ynoq tumani": { lat: 43.7683, lng: 59.0211 },
-      "Nukus tumani": { lat: 42.4647, lng: 59.6142 },
-      "Qonliko'l tumani": { lat: 42.8333, lng: 58.9833 },
-      "Qo'ng'irot tumani": { lat: 43.0672, lng: 58.9000 },
-      "Shumanay tumani": { lat: 42.7142, lng: 58.9222 },
-      "Taxtako'pir tumani": { lat: 43.2000, lng: 61.3333 },
-      "To'rtko'l tumani": { lat: 41.5500, lng: 61.0000 },
-      "Xo'jayli tumani": { lat: 42.4083, lng: 59.4450 }
+      "Navoiy shahar": { lat: 40.0844, lng: 65.3792 },
+      "Zarafshon shahar": { lat: 41.5667, lng: 64.2000 },
+      "Karmana": { lat: 40.1333, lng: 65.3667 },
+      "Konimex": { lat: 40.2756, lng: 65.1519 },
+      "Navbahor": { lat: 40.1667, lng: 65.4167 },
+      "Nurota": { lat: 40.5614, lng: 65.6886 },
+      "Qiziltepa": { lat: 40.0333, lng: 64.8500 },
+      "Tomdi": { lat: 42.1000, lng: 64.5167 },
+      "Uchquduq": { lat: 42.1564, lng: 63.5522 },
+      "Xatirchi": { lat: 40.1833, lng: 65.9167 }
+    }
+  },
+  "Qashqadaryo viloyati": {
+    districts: {
+      "Qarshi shahar": { lat: 38.8667, lng: 65.8000 },
+      "Shahrisabz shahar": { lat: 39.0578, lng: 66.8342 },
+      "Chiroqchi": { lat: 39.0333, lng: 66.5667 },
+      "Dehqonobod": { lat: 38.3167, lng: 66.6167 },
+      "G'uzor": { lat: 38.6167, lng: 66.2500 },
+      "Qamashi": { lat: 38.8333, lng: 66.4500 },
+      "Qarshi tumani": { lat: 38.8667, lng: 65.8000 },
+      "Koson": { lat: 39.0375, lng: 65.5850 },
+      "Kasbi": { lat: 39.0333, lng: 65.5000 },
+      "Kitob": { lat: 39.1167, lng: 66.8833 },
+      "Mirishkor": { lat: 38.7667, lng: 65.5333 },
+      "Muborak": { lat: 39.2553, lng: 65.1528 },
+      "Nishon": { lat: 38.6667, lng: 65.6667 },
+      "Shahrisabz tumani": { lat: 39.0578, lng: 66.8342 },
+      "Yakkabog'": { lat: 38.9667, lng: 66.6833 }
+    }
+  },
+  "Surxondaryo viloyati": {
+    districts: {
+      "Termiz shahar": { lat: 37.2242, lng: 67.2783 },
+      "Angor": { lat: 37.5000, lng: 67.0000 },
+      "Bandixon": { lat: 37.9667, lng: 67.1833 },
+      "Boysun": { lat: 38.2000, lng: 67.2000 },
+      "Denov": { lat: 38.2672, lng: 67.8989 },
+      "Jarqo'rg'on": { lat: 37.5167, lng: 67.4000 },
+      "Qiziriq": { lat: 37.6667, lng: 67.2500 },
+      "Qumqo'rg'on": { lat: 37.8333, lng: 67.5833 },
+      "Muzrabot": { lat: 37.7667, lng: 66.5333 },
+      "Oltinsoy": { lat: 38.1000, lng: 67.9000 },
+      "Sariosiyo": { lat: 38.4167, lng: 67.9667 },
+      "Termiz tumani": { lat: 37.2242, lng: 67.2783 },
+      "Uzun": { lat: 38.1667, lng: 68.0000 },
+      "Sherobod": { lat: 37.6667, lng: 67.0167 },
+      "Sho'rchi": { lat: 37.9994, lng: 67.7875 }
+    }
+  },
+  "Jizzax viloyati": {
+    districts: {
+      "Jizzax shahar": { lat: 40.1167, lng: 67.8500 },
+      "Arnasoy": { lat: 40.5333, lng: 67.7167 },
+      "Baxmal": { lat: 39.7500, lng: 67.6667 },
+      "Do'stlik": { lat: 40.5247, lng: 68.0358 },
+      "Forish": { lat: 40.3833, lng: 67.2333 },
+      "G'allaorol": { lat: 40.1333, lng: 67.8667 },
+      "Sharof Rashidov": { lat: 40.1667, lng: 67.8333 },
+      "Mirzacho'l": { lat: 40.6667, lng: 68.3333 },
+      "Paxtakor": { lat: 40.3167, lng: 67.9500 },
+      "Yangiobod": { lat: 40.5667, lng: 68.8333 },
+      "Zomin": { lat: 39.9667, lng: 68.4000 },
+      "Zafarobod": { lat: 40.3833, lng: 67.8167 },
+      "Zarbdor": { lat: 40.1667, lng: 68.5000 }
+    }
+  },
+  "Sirdaryo viloyati": {
+    districts: {
+      "Guliston shahar": { lat: 40.4897, lng: 68.7842 },
+      "Yangiyer shahar": { lat: 40.2750, lng: 68.8225 },
+      "Shirin shahar": { lat: 40.2917, lng: 69.0667 },
+      "Boyovut": { lat: 40.7167, lng: 69.2000 },
+      "Guliston tumani": { lat: 40.4897, lng: 68.7842 },
+      "Xovos": { lat: 40.3000, lng: 68.8667 },
+      "Mirzaobod": { lat: 40.6667, lng: 68.8333 },
+      "Oqoltin": { lat: 40.6000, lng: 69.0000 },
+      "Sardoba": { lat: 40.5500, lng: 68.1667 },
+      "Sayxunobod": { lat: 40.6667, lng: 68.6667 },
+      "Sirdaryo tumani": { lat: 40.8500, lng: 68.6667 }
+    }
+  },
+  "Qoraqalpog'iston Respublikasi": {
+    districts: {
+      "Nukus shahar": { lat: 42.4647, lng: 59.6022 },
+      "Amudaryo": { lat: 42.4167, lng: 59.9667 },
+      "Beruniy": { lat: 41.6911, lng: 60.7525 },
+      "Chimboy": { lat: 42.9333, lng: 59.7833 },
+      "Ellikqala": { lat: 41.9167, lng: 61.9167 },
+      "Kegayli": { lat: 42.7767, lng: 59.8078 },
+      "Mo'ynoq": { lat: 43.7683, lng: 59.0214 },
+      "Nukus tumani": { lat: 42.4647, lng: 59.6022 },
+      "Qonliko'l": { lat: 43.0333, lng: 58.8500 },
+      "Qo'ng'irot": { lat: 43.0639, lng: 58.9044 },
+      "Shumanay": { lat: 42.7147, lng: 58.0619 },
+      "Taxtako'pir": { lat: 43.2000, lng: 61.3333 },
+      "To'rtko'l": { lat: 41.5500, lng: 61.0000 },
+      "Xo'jayli": { lat: 42.4000, lng: 59.4500 }
     }
   }
 };
@@ -408,7 +406,7 @@ const regions = {
 // Foydalanuvchi holatini saqlash
 const userState = {};
 
-// Start buyrug'i - YANGILANDI
+// Start buyrug'i
 bot.start((ctx) => {
   const userId = ctx.from.id;
   const firstName = ctx.from.first_name;
@@ -452,7 +450,7 @@ bot.start((ctx) => {
   );
 });
 
-// Statistika ko'rsatish - YANGI
+// Statistika ko'rsatish
 bot.action('show_stats', async (ctx) => {
   const totalUsers = users.size;
   const totalRatings = Object.keys(userRatings).length;
@@ -578,344 +576,4 @@ bot.action(/district_(.+)/, async (ctx) => {
   let regionFound = null;
   
   for (const region in regions) {
-    if (regions[region].districts[district]) {
-      coords = regions[region].districts[district];
-      regionFound = region;
-      userState[userId] = { region: regionFound, district };
-      break;
-    }
-  }
-
-  if (!coords) {
-    return ctx.answerCbQuery("Xatolik yuz berdi!");
-  }
-
-  try {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
-
-    const response = await fetch(
-      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
-    );
-    const data = await response.json();
-
-    if (!data.data || !data.data.timings) throw new Error("API xatosi");
-
-    const times = data.data.timings;
-    const date = data.data.date.readable;
-    
-    const nextPrayer = getNextPrayerWithTime(times);
-    
-    let message = `🕌 ${district} — ${date} namoz vaqtlari:\n\n`;
-    
-    for (const prayer of prayerOrder) {
-      if (prayer === 'Sunrise') continue;
-      message += `${prayerNames[prayer]}: ${times[prayer]}\n`;
-    }
-    
-    message += `\n⏰ Keyingi namoz: ${nextPrayer.prayerName}\n`;
-    message += `🕒 Vaqt: ${nextPrayer.time}\n`;
-    message += `⏳ Qolgan vaqt: ${nextPrayer.remaining}\n\n`;
-    
-    message += `📍 ${regionFound}\n\n`;
-    message += `🤲 "Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔄 Vaqtlarni yangilash', `district_${district}`)],
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')]
-    ]);
-
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (err) {
-    console.error("Xatolik:", err);
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')],
-      [Markup.button.callback(`🔄 Qayta urinish`, `district_${district}`)]
-    ]);
-    
-    await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
-      ...keyboard
-    });
-  }
-});
-
-// Bot haqida - YANGILANDI
-bot.action('bot_info', async (ctx) => {
-  const totalUsers = users.size;
-  const totalRatings = Object.keys(userRatings).length;
-  
-  let averageRating = "0.0";
-  if (totalRatings > 0) {
-    const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
-    averageRating = (sum / totalRatings).toFixed(1);
-  }
-  
-  const message = `ℹ️ Bot Haqida
-
-🤖 Namoz Vaqtlari Boti
-Version: 2.1
-
-📊 Statistika:
-• ${Object.keys(regions).length} ta viloyat
-• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman va shahar
-• ${totalUsers} ta foydalanuvchi
-• ⭐ ${averageRating} (${totalRatings} ta baho)
-
-🌟 Yangi xususiyatlar:
-• Foydalanuvchi statistikasi
-• Juma kuni tabrik xabari
-• Haftalik faollik ko'rsatkichi
-• Real vaqtda yangilanish
-
-👨‍💻 Dasturchi: Nomonov
-
-"Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('⭐ Baholang', 'rate_bot')],
-    [Markup.button.callback('📢 Ulashing', 'share_bot')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')],
-    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
-  ]);
-  
-  try {
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (error) {}
-});
-
-// Baholash tizimi
-bot.action('rate_bot', (ctx) => {
-  const userId = ctx.from.id;
-  
-  if (userRatings[userId]) {
-    const userRating = userRatings[userId];
-    const totalRatings = Object.keys(userRatings).length;
-    
-    let averageRating = "0.0";
-    if (totalRatings > 0) {
-      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
-      averageRating = (sum / totalRatings).toFixed(1);
-    }
-    
-    const message = `⭐ Siz allaqachon baholagansiz
-
-Siz botimizga ${userRating} ⭐ baho bergansiz.
-
-📊 Joriy statistika:
-• ⭐ ${averageRating} (${totalRatings} ta baho)
-• ${users.size} ta foydalanuvchi
-
-Agar bahoingizni o'zgartirmoqchi bo'lsangiz, "Bahoni o'zgartirish" tugmasini bosing.`;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('✏️ Bahoni o\'zgartirish', 'change_rating')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
-    ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } else {
-    const message = `⭐ Botni Baholang
-
-Botimiz sizga qanchalik yoqdi? Baholang:`;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
-      [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
-      [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
-    ctx.editMessageText(message, {
-      ...keyboard
-    });
-  }
-});
-
-// Bahoni o'zgartirish
-bot.action('change_rating', (ctx) => {
-  const message = `✏️ Bahoni O'zgartirish
-
-Yangi bahoni tanlang:`;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
-    [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
-    [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
-    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-  ]);
-  
-  ctx.editMessageText(message, {
-    ...keyboard
-  });
-});
-
-// Baholarni qayta ishlash
-const ratingHandlers = {
-  'rate_1': 1, 'rate_2': 2, 'rate_3': 3, 'rate_4': 4, 'rate_5': 5
-};
-
-for (const [action, rating] of Object.entries(ratingHandlers)) {
-  bot.action(action, async (ctx) => {
-    const userId = ctx.from.id;
-    
-    const oldRating = userRatings[userId];
-    userRatings[userId] = rating;
-    
-    const totalRatings = Object.keys(userRatings).length;
-    
-    let averageRating = "0.0";
-    if (totalRatings > 0) {
-      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
-      averageRating = (sum / totalRatings).toFixed(1);
-    }
-    
-    if (oldRating) {
-      await ctx.answerCbQuery(`✅ Baho ${oldRating} dan ${rating} ga o'zgartirildi!`);
-    } else {
-      await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
-    }
-    
-    const message = `✅ ${oldRating ? 'Baho o\'zgartirildi!' : 'Rahmat! Baholaganingiz uchun tashakkur!'}
-
-${oldRating ? `Sizning bahoingiz ${oldRating} ⭐ dan ${rating} ⭐ ga o'zgartirildi.` : `Siz ${rating} ⭐ baho berdingiz.`}
-
-📊 Yangi statistika:
-• ⭐ ${averageRating} (${totalRatings} ta baho)
-• ${users.size} ta foydalanuvchi`;
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📢 Boshqalarga ulashing', 'share_bot')],
-      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-    ]);
-    
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  });
-}
-
-// Ulashish
-bot.action('share_bot', async (ctx) => {
-  const message = `📢 Botni Ulashing
-
-Do'stlaringizga botni ulashing va savobga tushing!
-
-🤖 Bot nomi: Namoz Vaqtlari Boti
-🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot
-  
-📊 Bot statistikasi:
-• ${users.size} ta foydalanuvchi
-• ${Object.keys(regions).length} ta viloyat
-• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman`;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌 Namoz vaqtlarini bilib oling!')],
-    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-  ]);
-  
-  try {
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (error) {
-    console.log("Xabar o'zgartirish xatosi:", error.message);
-  }
-});
-
-// Har qanday xabarga javob
-bot.on('message', (ctx) => {
-  if (ctx.message.text && !ctx.message.text.startsWith('/')) {
-    const firstName = ctx.from.first_name;
-    const userId = ctx.from.id;
-    
-    users.set(userId, {
-      name: firstName,
-      username: ctx.from.username,
-      firstSeen: new Date(),
-      lastSeen: new Date(),
-      startCount: (users.get(userId)?.startCount || 0) + 1
-    });
-    
-    ctx.reply(
-      `Assalomu alaykum ${firstName || "do'st"}! Botdan foydalanish uchun /start buyrug'ini bering:`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 Botni ishga tushirish', 'start_bot')]
-      ])
-    );
-  }
-});
-
-// Start bot tugmasi uchun handler
-bot.action('start_bot', (ctx) => {
-  const firstName = ctx.from.first_name;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')]
-  ]);
-  
-  ctx.editMessageText(
-    getBotInfo(firstName),
-    {
-      ...keyboard
-    }
-  );
-});
-
-// Juma kuni tabrik xabarini avtomatik jo'natish
-function sendFridayGreeting() {
-  const now = new Date();
-  if (now.getDay() === 5 && now.getHours() === 8) { // Juma, soat 8:00
-    const fridayMessage = getFridayMessage();
-    
-    users.forEach((user, userId) => {
-      try {
-        bot.telegram.sendMessage(userId, fridayMessage);
-        console.log(`📿 Juma tabriki jo'natildi: ${user.name}`);
-      } catch (error) {
-        console.log(`❌ Juma tabriki jo'natilmadi: ${user.name}`);
-      }
-    });
-  }
-}
-
-// SERVER FOR RENDER
-const PORT = process.env.PORT || 3000;
-
-const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end(BOT_DESCRIPTION);
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server ${PORT} portida ishga tushdi`);
-});
-
-// Keep-alive va Juma tekshiruvi
-setInterval(() => {
-  console.log('❤️ Bot jonli... ' + new Date().toLocaleString());
-  console.log(`👥 Foydalanuvchilar: ${users.size} ta`);
-  
-  // Juma tabrikini tekshirish
-  sendFridayGreeting();
-}, 600000); // 10 daqiqa
-
-// Botni ishga tushirish
-bot.launch().then(() => {
-  console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
-  console.log(`📊 Boshlang'ich statistika: ${users.size} ta foydalanuvchi`);
-}).catch(err => {
-  console.error('❌ Botni ishga tushirishda xatolik:', err);
-});
-
-// Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    if (regions[region].districts
