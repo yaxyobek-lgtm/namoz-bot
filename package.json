@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "sqlite3": "^5.1.7",
+    "pg": "^8.13.3",
     "dotenv": "^16.4.7"
   }
 }
