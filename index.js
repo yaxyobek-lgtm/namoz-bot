@@ -1,796 +1,389 @@
-import { Telegraf, Markup } from "telegraf";
-import fetch from "node-fetch";
-import { createServer } from 'http';
+// index.js
+import 'dotenv/config';
+import { Telegraf, session, Scenes } from 'telegraf';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import crypto from 'crypto';
 
-const bot = new Telegraf(process.env.BOT_TOKEN || "8529967384:AAG3EUtygqchETc7df02LTB0ylfAPOonWGs");
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean).map(Number);
+const DB_PATH = process.env.DB_PATH || './quizbot.db';
 
-// Bot tavsifi
-const BOT_DESCRIPTION = `🕌 Namoz Vaqtlari Boti - O'zbekiston bo'ylab aniq namoz vaqtlari
-
-Assalomu alaykum! Bu bot orqali siz O'zbekistonning barcha viloyat va tumanlari uchun aniq namoz vaqtlari bilib olishingiz mumkin.
-
-📅 Xususiyatlar:
-• Bugungi namoz vaqtlari
-• Barcha viloyat va tumanlar uchun
-• Tasodifiy Qur'on oyatlari
-• Haftalik statistika
-
-🤖 Bot: @namoz_vaqtlari_bugun_bot
-👨‍💻 Dasturchi: Nomonov`;
-
-// Bot haqida ma'lumot
-function getBotInfo(firstName) {
-  return `🕌 Namoz Vaqtlari Boti
-
-Assalomu alaykum ${firstName || "do'st"}! 😊 Bu bot orqali siz:
-
-✅ Bugungi namoz vaqtlarini bilib olishingiz mumkin
-✅ O'zbekistonning barcha viloyat va tumanlari uchun aniq vaqtlar
-✅ Har safar yangi Qur'on oyatlari
-✅ Foydalanuvchi statistikasi
-
-Botdan foydalanish uchun /start buyrug'ini bering yoki pastdagi tugmalardan foydalaning.`;
+if (!BOT_TOKEN) {
+  console.error('Missing BOT_TOKEN in .env');
+  process.exit(1);
 }
 
-// Namoz vaqtlarini tartibda saqlash
-const prayerOrder = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-const prayerNames = {
-  'Fajr': '🌅 Bomdod',
-  'Sunrise': '🌄 Quyosh', 
-  'Dhuhr': '☀️ Peshin',
-  'Asr': '🌤 Asr',
-  'Maghrib': '🌇 Shom',
-  'Isha': '🌙 Xufton'
-};
+const bot = new Telegraf(BOT_TOKEN);
 
-// 100+ Tasodifiy Qur'on oyatlari va hadislar
-const islamicMessages = [
-  `📖 "Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`,
-  `📖 "Namozni to'kis ado eting, zakot bering va ruku qiluvchilar bilan birga ruku qiling" (Al-Baqara: 43)`,
-  `📖 "Ey mo'minlar! Sabr va namoz bilan Yordan so'rang. Albatta, Alloh sabr qiluvchilar bilan birga" (Al-Baqara: 153)`,
-  `📖 "Ular namozlarini doimiy ado etadilar va Biz ulagan rizqlardan infoq qiladilar" (Al-Anfal: 3)`,
-  `📖 "Namozni to'kis ado eting va Allohdan qo'rqing. Uning oldiga yig'ilasiz" (Al-An'am: 72)`,
-  `📖 "O'z uylaringizga qaytganingizda, ota-onangizga va qarindoshlaringizga salom bering. Bu Allohning huzurida savobli ishdir" (An-Nur: 61)`,
-  `📖 "Kimki bir yaxshilik qilsa, unga o'n barobar savob yoziladi" (Al-An'am: 160)`,
-  `📖 "Alloh sizga osonlikni istaydi, qiynoqni istamaydi" (Al-Baqara: 185)`,
-  `📖 "Har qiyinchilik bilan birga osonlik bor" (Ash-Sharh: 6)`,
-  `📖 "Albatta, Alloh adolat qiluvchilarni, iylik qiluvchilarni va qarindoshlarga yordam beruvchilarni sevadi" (An-Nahl: 90)`,
-  `🕌 "Sizlardan kim bir yomonlikni ko'rsa, uni qo'li bilan o'zgartirsin" (Hadisi Sharif)`,
-  `🕌 "Mo'min boshqalarga yordam beradigan, ularning dardlarini yengillashtiradigan kishidir" (Hadisi Sharif)`,
-  `🕌 "Barcha ishlaringizda o'rtachilikni tuting, chunki eng yaxshi isl o'rtacha qilinadigan isldir" (Hadisi Sharif)`,
-  `🕌 "Halol rizq izlash har bir musulmon uchun farzdir" (Hadisi Sharif)`,
-  `🕌 "Ota-onaga yaxshilik qiling, ularning duolari qabul qilinadi" (Hadisi Sharif)`,
-  `🕌 "Ilm o'rgangan kishiga osmon va yer aholisi duo qiladi" (Hadisi Sharif)`,
-  `🕌 "Halol narsadan bir lokma, harom narsadan to'la qozondan afzaldir" (Hadisi Sharif)`,
-  `🕌 "Birovning ehtiyojini qondirgan kishi butun kun Allohga ibodat qilgandek savob oladi" (Hadisi Sharif)`,
-  `🕌 "Yaxshi so'z - sadaqadir" (Hadisi Sharif)`,
-  `🕌 "Kuchli mo'min Alloh nazdida zaif mo'mindan afzaldir" (Hadisi Sharif)`,
-  `📖 "Alloh sizni ozgina sinab ko'radi" (Al-Anfal: 28)`,
-  `📖 "Kim Allohga tawakkul qilsa, U unga kifoya qiladi" (At-Taloq: 3)`,
-  `📖 "Alloh hech kimga uning qudratidan ortig'ini yuklamaydi" (Al-Baqara: 286)`,
-  `📖 "Yaxshi so'z va kechirim, orqasidan ozor keladigan sadagadan afzaldir" (Al-Baqara: 263)`,
-  `📖 "Alloh sizning amallaringizni ko'rmaydimi?" (At-Tin: 4)`,
-  `📖 "Barcha jonzotlar uchun o'lim bor" (Al-Anbiyo: 35)`,
-  `📖 "Dunyoning barcha bezaklari o'tkinchidir" (Al-Hadid: 20)`,
-  `📖 "Har qiyinchilikdan keyin osonlik bor" (Ash-Sharh: 5)`,
-  `📖 "Allohga shukr qiling, chunki u sizga bergan ne'matlari son-sanoqsiz" (Ibrohim: 34)`,
-  `📖 "Yaxshi amallaringizni bekor qilmang" (Muhammad: 33)`,
-  `🕌 "Halol ishlash - har bir musulmon uchun farz" (Hadisi Sharif)`,
-  `🕌 "Qo'shning ochiq holda uxlasa, siz to'kin-sochin yeb uxlashingiz halol emas" (Hadisi Sharif)`,
-  `🕌 "Birovning aybini izlamang, gunoh qilmang, hasad qilmang" (Hadisi Sharif)`,
-  `🕌 "Eng yaxshi odam - odamlarga foydasi tegadigan kishi" (Hadisi Sharif)`,
-  `🕌 "Ilm o'rgangan kishi bilan birga bo'lish - savob ishidir" (Hadisi Sharif)`,
-  `🕌 "Yaxshi xulq - eng yaxshi merosdir" (Hadisi Sharif)`,
-  `🕌 "Kichik gunohlarga kichik deb qarama, chunki ular jam bo'lganda katta bo'ladi" (Hadisi Sharif)`,
-  `🕌 "Har bir musulmon boshqa musulmon uchun birodardir" (Hadisi Sharif)`,
-  `🕌 "Sizlardan kim bir yaxshilikni boshlasa, uni davom ettirganlar uchun savob bor" (Hadisi Sharif)`,
-  `🕌 "Har kim yaxshi niyat bilan bir ishni boslasa, unga to'liq savob yoziladi" (Hadisi Sharif)`,
-  `📖 "Alloh sizga dushmanlik qilganlarga muhabbat bilan munosabatda bo'lishingizni buyuradi" (Fussilat: 34)`,
-  `📖 "Yaxshi so'z va kechirim, orqasidan ozor keladigan sadagadan afzaldir" (Al-Baqara: 263)`,
-  `📖 "Alloh sizni imtihon qilish uchun boylik va farzandlar bilan sinaydi" (Al-Anfal: 28)`,
-  `📖 "Har bir inson o'z qilgan amallari uchun javobgardir" (At-Toor: 21)`,
-  `📖 "Allohga qaytishingiz va undan umid qilishingiz kerak" (Az-Zumar: 53)`,
-  `📖 "Dunyoviy hayot faqat o'yin-kulgi va bezakdir" (Al-Hadid: 20)`,
-  `📖 "Har bir narsa Allohning irodasi bilan bo'ladi" (At-Tag'obun: 11)`,
-  `📖 "Alloh sizga bergan ne'matlarini eslang" (Al-Baqara: 152)`,
-  `📖 "Har qanday ishni boshlaganda Bismillah deb boshlang" (Hadisi Sharif asosida)`,
-  `📖 "Alloh sizni yaratdi va sizga shakl berdi" (Al-Infitor: 7)`,
-  `🕌 "Kichiklarga rahm qiling, kattalarga hurmat qiling" (Hadisi Sharif)`,
-  `🕌 "Yaxshi odam - yaxshi so'zli va xushmuomala odam" (Hadisi Sharif)`,
-  `🕌 "Har bir musulmon boshqa musulmonning og'rig'ini his qilishi kerak" (Hadisi Sharif)`,
-  `🕌 "Yaxshi niyat - amalning qalbidir" (Hadisi Sharif)`,
-  `🕌 "Har kim bir yaxshilikni ko'rsatsa, uni qilgan kabi savob oladi" (Hadisi Sharif)`,
-  `🕌 "Ilm o'rgangan kishiga barcha mahlukot duo qiladi" (Hadisi Sharif)`,
-  `🕌 "Yaxshi xulq - jannat kalitidir" (Hadisi Sharif)`,
-  `🕌 "Har kim bir musulmonning dardini yengillashtirsa, Alloh uning dardini yengillashtiradi" (Hadisi Sharif)`,
-  `🕌 "Birovga yordam berish - eng yaxshi sadaqadir" (Hadisi Sharif)`,
-  `🕌 "Har bir musulmon boshqa musulmon uchun oyna bo'lishi kerak" (Hadisi Sharif)`
-];
-
-// Tasodifiy oyat/hadis tanlash
-function getRandomIslamicMessage() {
-  const randomIndex = Math.floor(Math.random() * islamicMessages.length);
-  return islamicMessages[randomIndex];
-}
-
-// Foydalanuvchilarni saqlash
-const users = new Map();
-const userStats = {
-  totalStarts: 0,
-  dailyStarts: 0,
-  lastReset: new Date().toDateString()
-};
-
-// Haftalik statistikani yangilash
-function updateDailyStats() {
-  const today = new Date().toDateString();
-  if (userStats.lastReset !== today) {
-    userStats.dailyStarts = 0;
-    userStats.lastReset = today;
-  }
-}
-
-// VILOYATLAR VA TUMANLAR - SIZ TO'LDIRASIZ
-const regions = {
-  "Toshkent shahri": {
-    districts: {
-      "Yunusobod": { lat: 41.3515, lng: 69.2863 },
-      "Chilonzor": { lat: 41.2754, lng: 69.2044 },
-      "Mirzo Ulug'bek": { lat: 41.3339, lng: 69.2275 },
-      "Mirobod": { lat: 41.3289, lng: 69.2314 },
-      "Olmazor": { lat: 41.3058, lng: 69.2406 },
-      "Sergeli": { lat: 41.2142, lng: 69.2367 },
-      "Shayxontohur": { lat: 41.3172, lng: 69.2408 },
-      "Yakkasaroy": { lat: 41.2825, lng: 69.2714 },
-      "Yashnobod": { lat: 41.2153, lng: 69.3019 },
-      "Uchtepa": { lat: 41.2658, lng: 69.3319 }
-    }
-  },
-  "Toshkent viloyati": {
-    districts: {
-      "Angren": { lat: 41.0167, lng: 70.1436 },
-      "Bekobod": { lat: 40.2203, lng: 69.2236 },
-      "Chirchiq": { lat: 41.4689, lng: 69.5822 },
-      "Olmaliq": { lat: 40.8500, lng: 69.6000 },
-      "Ohangaron": { lat: 40.9064, lng: 69.6383 },
-      "Parkent": { lat: 41.2944, lng: 69.6764 },
-      "Piskent": { lat: 40.8972, lng: 69.3500 },
-      "Quyi Chirchiq": { lat: 41.1167, lng: 69.3667 },
-      "O'rta Chirchiq": { lat: 41.2333, lng: 69.1500 },
-      "Yangiyo'l": { lat: 41.1122, lng: 69.0472 },
-      "Zangiota": { lat: 41.1928, lng: 69.1403 },
-      "Boka": { lat: 40.8111, lng: 69.1944 },
-      "Qibray": { lat: 41.3897, lng: 69.4650 },
-      "Yuqori Chirchiq": { lat: 41.3500, lng: 69.5833 },
-      "Oqqo'rg'on": { lat: 40.8789, lng: 72.5619 }
-    }
-  },
-  "Farg'ona viloyati": {
-    districts: {
-      "Farg'ona shahar": { lat: 40.3864, lng: 71.7864 },
-      "Marg'ilon shahar": { lat: 40.4714, lng: 71.7247 },
-      "Qo'qon shahar": { lat: 40.5286, lng: 70.9425 },
-      "Beshariq": { lat: 40.4358, lng: 70.6103 },
-      "Bog'dod": { lat: 40.5375, lng: 71.1083 },
-      "Buvayda": { lat: 40.6167, lng: 70.8333 },
-      "Dang'ara": { lat: 40.5917, lng: 70.9167 },
-      "Furqat": { lat: 40.5139, lng: 70.7647 },
-      "O'zbekiston": { lat: 40.4333, lng: 70.6000 },
-      "Quva": { lat: 40.5222, lng: 72.0667 },
-      "Rishton": { lat: 40.3567, lng: 71.2847 },
-      "So'x": { lat: 39.9667, lng: 71.1333 },
-      "Toshloq": { lat: 40.4667, lng: 71.7667 },
-      "Uchko'prik": { lat: 40.4333, lng: 70.9500 },
-      "O'zgan": { lat: 40.3667, lng: 71.5000 },
-      "Yozyovon": { lat: 40.6556, lng: 71.7444 }
-    }
-  },
-  "Andijon viloyati": {
-    districts: {
-      "Andijon shahar": { lat: 40.7833, lng: 72.3333 },
-      "Xonobod shahar": { lat: 40.8694, lng: 72.9889 },
-      "Asaka": { lat: 40.6417, lng: 72.2389 },
-      "Baliqchi": { lat: 40.8667, lng: 72.0000 },
-      "Boz": { lat: 40.7333, lng: 71.9167 },
-      "Buloqboshi": { lat: 40.6167, lng: 72.4667 },
-      "Izboskan": { lat: 40.9167, lng: 72.2500 },
-      "Jalaquduq": { lat: 40.7500, lng: 72.6667 },
-      "Xo'jaobod": { lat: 40.6667, lng: 72.5667 },
-      "Qo'rg'ontepa": { lat: 40.7333, lng: 72.7667 },
-      "Marhamat": { lat: 40.5000, lng: 72.3167 },
-      "Oltinko'l": { lat: 40.8000, lng: 72.1667 },
-      "Paxtaobod": { lat: 40.9333, lng: 72.5000 },
-      "Shahrixon": { lat: 40.7167, lng: 72.0667 },
-      "Ulug'nor": { lat: 40.7333, lng: 71.7000 }
-    }
-  },
-  "Namangan viloyati": {
-    districts: {
-      "Namangan shahar": { lat: 40.9953, lng: 71.6725 },
-      "Kosonsoy": { lat: 41.2494, lng: 71.5472 },
-      "Mingbuloq": { lat: 40.7667, lng: 72.7000 },
-      "Norin": { lat: 40.9667, lng: 71.7167 },
-      "Pop": { lat: 40.8667, lng: 71.1167 },
-      "To'raqo'rg'on": { lat: 40.9967, lng: 71.5117 },
-      "Uchqo'rg'on": { lat: 41.1139, lng: 72.0792 },
-      "Chortoq": { lat: 41.0694, lng: 71.8233 },
-      "Chust": { lat: 41.0033, lng: 71.2378 },
-      "Yangiqo'rg'on": { lat: 41.1889, lng: 71.7319 },
-      "Uychi": { lat: 41.0806, lng: 71.9233 }
-    }
-  },
-  "Samarqand viloyati": {
-    districts: {
-      "Samarqand shahar": { lat: 39.6542, lng: 66.9597 },
-      "Kattaqo'rg'on shahar": { lat: 39.9000, lng: 66.2500 },
-      "Bulung'ur": { lat: 39.7667, lng: 67.2667 },
-      "Ishtixon": { lat: 39.9667, lng: 66.4833 },
-      "Jomboy": { lat: 39.7000, lng: 67.0833 },
-      "Kattaqo'rg'on": { lat: 39.9000, lng: 66.2500 },
-      "Qo'shrabot": { lat: 40.1667, lng: 66.6667 },
-      "Narpay": { lat: 39.8333, lng: 65.6667 },
-      "Nurobod": { lat: 39.5000, lng: 66.2500 },
-      "Oqdaryo": { lat: 39.9167, lng: 66.1667 },
-      "Paxtachi": { lat: 40.2167, lng: 67.9500 },
-      "Payariq": { lat: 39.8333, lng: 66.9167 },
-      "Pastdarg'om": { lat: 39.7167, lng: 66.6667 },
-      "Toyloq": { lat: 39.5833, lng: 66.8333 },
-      "Urgut": { lat: 39.4022, lng: 67.2431 }
-    }
-  },
-  "Buxoro viloyati": {
-    districts: {
-      "Buxoro shahar": { lat: 39.7667, lng: 64.4333 },
-      "Kogon shahar": { lat: 39.7225, lng: 64.5517 },
-      "Olot": { lat: 39.4167, lng: 63.8000 },
-      "Buxoro tumani": { lat: 39.7667, lng: 64.4333 },
-      "Vobkent": { lat: 39.7167, lng: 64.5167 },
-      "G'ijduvon": { lat: 40.1000, lng: 64.6833 },
-      "Jondor": { lat: 39.7167, lng: 63.9000 },
-      "Kogon tumani": { lat: 39.7225, lng: 64.5517 },
-      "Qorako'l": { lat: 39.8333, lng: 63.8333 },
-      "Qorovulbozor": { lat: 39.5000, lng: 64.8000 },
-      "Peshku": { lat: 40.1667, lng: 63.5000 },
-      "Romitan": { lat: 39.9333, lng: 64.3833 },
-      "Shofirkon": { lat: 40.1167, lng: 64.5000 }
-    }
-  },
-  "Xorazm viloyati": {
-    districts: {
-      "Urganch shahar": { lat: 41.5500, lng: 60.6333 },
-      "Xiva shahar": { lat: 41.3842, lng: 60.3581 },
-      "Bog'ot": { lat: 41.3167, lng: 60.8500 },
-      "Gurlan": { lat: 41.8333, lng: 60.3833 },
-      "Qo'shko'pir": { lat: 41.5350, lng: 60.3450 },
-      "Urganch tumani": { lat: 41.5500, lng: 60.6333 },
-      "Xiva tumani": { lat: 41.3842, lng: 60.3581 },
-      "Xonqa": { lat: 41.4269, lng: 60.8667 },
-      "Yangiariq": { lat: 41.3333, lng: 60.5667 },
-      "Yangibozor": { lat: 41.7211, lng: 60.8972 },
-      "Shovot": { lat: 41.6558, lng: 60.3025 },
-      "Hazorasp": { lat: 41.3194, lng: 61.0742 }
-    }
-  },
-  "Navoiy viloyati": {
-    districts: {
-      "Navoiy shahar": { lat: 40.0844, lng: 65.3792 },
-      "Zarafshon shahar": { lat: 41.5667, lng: 64.2000 },
-      "Karmana": { lat: 40.1333, lng: 65.3667 },
-      "Konimex": { lat: 40.2756, lng: 65.1519 },
-      "Navbahor": { lat: 40.1667, lng: 65.4167 },
-      "Nurota": { lat: 40.5614, lng: 65.6886 },
-      "Qiziltepa": { lat: 40.0333, lng: 64.8500 },
-      "Tomdi": { lat: 42.1000, lng: 64.5167 },
-      "Uchquduq": { lat: 42.1564, lng: 63.5522 },
-      "Xatirchi": { lat: 40.1833, lng: 65.9167 }
-    }
-  },
-  "Qashqadaryo viloyati": {
-    districts: {
-      "Qarshi shahar": { lat: 38.8667, lng: 65.8000 },
-      "Shahrisabz shahar": { lat: 39.0578, lng: 66.8342 },
-      "Chiroqchi": { lat: 39.0333, lng: 66.5667 },
-      "Dehqonobod": { lat: 38.3167, lng: 66.6167 },
-      "G'uzor": { lat: 38.6167, lng: 66.2500 },
-      "Qamashi": { lat: 38.8333, lng: 66.4500 },
-      "Qarshi tumani": { lat: 38.8667, lng: 65.8000 },
-      "Koson": { lat: 39.0375, lng: 65.5850 },
-      "Kasbi": { lat: 39.0333, lng: 65.5000 },
-      "Kitob": { lat: 39.1167, lng: 66.8833 },
-      "Mirishkor": { lat: 38.7667, lng: 65.5333 },
-      "Muborak": { lat: 39.2553, lng: 65.1528 },
-      "Nishon": { lat: 38.6667, lng: 65.6667 },
-      "Shahrisabz tumani": { lat: 39.0578, lng: 66.8342 },
-      "Yakkabog'": { lat: 38.9667, lng: 66.6833 }
-    }
-  },
-  "Surxondaryo viloyati": {
-    districts: {
-      "Termiz shahar": { lat: 37.2242, lng: 67.2783 },
-      "Angor": { lat: 37.5000, lng: 67.0000 },
-      "Bandixon": { lat: 37.9667, lng: 67.1833 },
-      "Boysun": { lat: 38.2000, lng: 67.2000 },
-      "Denov": { lat: 38.2672, lng: 67.8989 },
-      "Jarqo'rg'on": { lat: 37.5167, lng: 67.4000 },
-      "Qiziriq": { lat: 37.6667, lng: 67.2500 },
-      "Qumqo'rg'on": { lat: 37.8333, lng: 67.5833 },
-      "Muzrabot": { lat: 37.7667, lng: 66.5333 },
-      "Oltinsoy": { lat: 38.1000, lng: 67.9000 },
-      "Sariosiyo": { lat: 38.4167, lng: 67.9667 },
-      "Termiz tumani": { lat: 37.2242, lng: 67.2783 },
-      "Uzun": { lat: 38.1667, lng: 68.0000 },
-      "Sherobod": { lat: 37.6667, lng: 67.0167 },
-      "Sho'rchi": { lat: 37.9994, lng: 67.7875 }
-    }
-  },
-  "Jizzax viloyati": {
-    districts: {
-      "Jizzax shahar": { lat: 40.1167, lng: 67.8500 },
-      "Arnasoy": { lat: 40.5333, lng: 67.7167 },
-      "Baxmal": { lat: 39.7500, lng: 67.6667 },
-      "Do'stlik": { lat: 40.5247, lng: 68.0358 },
-      "Forish": { lat: 40.3833, lng: 67.2333 },
-      "G'allaorol": { lat: 40.1333, lng: 67.8667 },
-      "Sharof Rashidov": { lat: 40.1667, lng: 67.8333 },
-      "Mirzacho'l": { lat: 40.6667, lng: 68.3333 },
-      "Paxtakor": { lat: 40.3167, lng: 67.9500 },
-      "Yangiobod": { lat: 40.5667, lng: 68.8333 },
-      "Zomin": { lat: 39.9667, lng: 68.4000 },
-      "Zafarobod": { lat: 40.3833, lng: 67.8167 },
-      "Zarbdor": { lat: 40.1667, lng: 68.5000 }
-    }
-  },
-  "Sirdaryo viloyati": {
-    districts: {
-      "Guliston shahar": { lat: 40.4897, lng: 68.7842 },
-      "Yangiyer shahar": { lat: 40.2750, lng: 68.8225 },
-      "Shirin shahar": { lat: 40.2917, lng: 69.0667 },
-      "Boyovut": { lat: 40.7167, lng: 69.2000 },
-      "Guliston tumani": { lat: 40.4897, lng: 68.7842 },
-      "Xovos": { lat: 40.3000, lng: 68.8667 },
-      "Mirzaobod": { lat: 40.6667, lng: 68.8333 },
-      "Oqoltin": { lat: 40.6000, lng: 69.0000 },
-      "Sardoba": { lat: 40.5500, lng: 68.1667 },
-      "Sayxunobod": { lat: 40.6667, lng: 68.6667 },
-      "Sirdaryo tumani": { lat: 40.8500, lng: 68.6667 }
-    }
-  },
-  "Qoraqalpog'iston Respublikasi": {
-    districts: {
-      "Nukus shahar": { lat: 42.4647, lng: 59.6022 },
-      "Amudaryo": { lat: 42.4167, lng: 59.9667 },
-      "Beruniy": { lat: 41.6911, lng: 60.7525 },
-      "Chimboy": { lat: 42.9333, lng: 59.7833 },
-      "Ellikqala": { lat: 41.9167, lng: 61.9167 },
-      "Kegayli": { lat: 42.7767, lng: 59.8078 },
-      "Mo'ynoq": { lat: 43.7683, lng: 59.0214 },
-      "Nukus tumani": { lat: 42.4647, lng: 59.6022 },
-      "Qonliko'l": { lat: 43.0333, lng: 58.8500 },
-      "Qo'ng'irot": { lat: 43.0639, lng: 58.9044 },
-      "Shumanay": { lat: 42.7147, lng: 58.0619 },
-      "Taxtako'pir": { lat: 43.2000, lng: 61.3333 },
-      "To'rtko'l": { lat: 41.5500, lng: 61.0000 },
-      "Xo'jayli": { lat: 42.4000, lng: 59.4500 }
-    }
-  }
-};
-
-// Foydalanuvchi holatini saqlash
-const userState = {};
-
-// Start buyrug'i
-bot.start((ctx) => {
-  const userId = ctx.from.id;
-  const firstName = ctx.from.first_name;
-  const username = ctx.from.username;
-  
-  // Statistikani yangilash
-  updateDailyStats();
-  userStats.totalStarts++;
-  userStats.dailyStarts++;
-  
-  // Foydalanuvchini qo'shish
-  users.set(userId, {
-    name: firstName,
-    username: username,
-    firstSeen: new Date(),
-    lastSeen: new Date(),
-    startCount: (users.get(userId)?.startCount || 0) + 1
+// --- DB init ---
+let db;
+async function initDb() {
+  db = await open({
+    filename: DB_PATH,
+    driver: sqlite3.Database
   });
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_questions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      username TEXT,
+      question TEXT,
+      option_a TEXT,
+      option_b TEXT,
+      option_c TEXT,
+      option_d TEXT,
+      correct CHAR(1),
+      category TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reputation_effect INTEGER DEFAULT 0
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS questions (
+      id TEXT PRIMARY KEY,
+      question TEXT,
+      option_a TEXT,
+      option_b TEXT,
+      option_c TEXT,
+      option_d TEXT,
+      correct CHAR(1),
+      category TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      added_by INTEGER
+    );
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      user_id INTEGER PRIMARY KEY,
+      username TEXT,
+      reputation INTEGER DEFAULT 0
+    );
+  `);
   
-  console.log(`👤 Yangi foydalanuvchi: ${firstName} (${username || 'username yo\'q'}) - Jami: ${users.size}`);
+  console.log('Database initialized');
+}
+
+// --- Helpers ---
+const profanity = ['yomon','so‘kim','badword']; // o'zingiz qo'shing
+function containsProfanity(text) {
+  const t = (text || '').toLowerCase();
+  return profanity.some(w => t.includes(w));
+}
+function genId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+function isAdmin(ctx) {
+  const id = ctx.from?.id;
+  return ADMIN_IDS.includes(id);
+}
+
+// --- Scenes for add-question wizard ---
+const { BaseScene, Stage } = Scenes;
+
+const askQuestion = new BaseScene('askQuestion');
+askQuestion.enter((ctx) => ctx.reply('Savolni matnini yozing (qisqa va aniq):'));
+askQuestion.on('text', async (ctx) => {
+  ctx.session.newQ = { question: ctx.message.text.trim() };
+  if (ctx.session.newQ.question.length < 5) {
+    return ctx.reply('Savol juda qisqa — iltimos, toʻliqroq yozing.');
+  }
+  if (containsProfanity(ctx.session.newQ.question)) {
+    return ctx.reply('Savol notoʻgʻri soʻzlar bor — boshqa savol yozing.');
+  }
+  await ctx.reply('Variant A ni yozing:');
+  return ctx.wizard.next();
+});
+askQuestion.on('message', (ctx) => ctx.reply('Iltimos, savol matnini matn sifatida yuboring.'));
+
+const askOptA = new BaseScene('askOptA');
+askOptA.enter((ctx) => ctx.reply('Variant A ni yozing:'));
+askOptA.on('text', async (ctx) => {
+  ctx.session.newQ.option_a = ctx.message.text.trim();
+  await ctx.reply('Variant B ni yozing:');
+  return ctx.wizard.next();
+});
+askOptA.on('message', (ctx) => ctx.reply('Iltimos, matn yuboring.'));
+
+const askOptB = new BaseScene('askOptB');
+askOptB.enter((ctx) => ctx.reply('Variant B ni yozing:'));
+askOptB.on('text', async (ctx) => {
+  ctx.session.newQ.option_b = ctx.message.text.trim();
+  await ctx.reply('Variant C ni yozing:');
+  return ctx.wizard.next();
+});
+askOptB.on('message', (ctx) => ctx.reply('Iltimos, matn yuboring.'));
+
+const askOptC = new BaseScene('askOptC');
+askOptC.enter((ctx) => ctx.reply('Variant C ni yozing:'));
+askOptC.on('text', async (ctx) => {
+  ctx.session.newQ.option_c = ctx.message.text.trim();
+  await ctx.reply('Variant D ni yozing:');
+  return ctx.wizard.next();
+});
+askOptC.on('message', (ctx) => ctx.reply('Iltimos, matn yuboring.'));
+
+const askOptD = new BaseScene('askOptD');
+askOptD.enter((ctx) => ctx.reply('Variant D ni yozing:'));
+askOptD.on('text', async (ctx) => {
+  ctx.session.newQ.option_d = ctx.message.text.trim();
+  await ctx.reply('Toʻgʻri javob qaysi? (A/B/C/D) ');
+  return ctx.wizard.next();
+});
+askOptD.on('message', (ctx) => ctx.reply('Iltimos, matn yuboring.'));
+
+const askCorrect = new BaseScene('askCorrect');
+askCorrect.enter((ctx) => ctx.reply('Toʻgʻri javob qaysi? (A/B/C/D) '));
+askCorrect.on('text', async (ctx) => {
+  const ans = ctx.message.text.trim().toUpperCase();
+  if (!['A','B','C','D'].includes(ans)) return ctx.reply('Faqat A, B, C yoki D ni yozing.');
+  ctx.session.newQ.correct = ans;
+  await ctx.reply('Kategoriya yozing (masalan: Matematika, Tarix yoki "Umumiy"):');
+  return ctx.wizard.next();
+});
+askCorrect.on('message', (ctx) => ctx.reply('Iltimos, A/B/C/D deb yozing.'));
+
+const askCategory = new BaseScene('askCategory');
+askCategory.enter((ctx) => ctx.reply('Kategoriya yozing (masalan: Matematika, Tarix yoki "Umumiy"):'));
+askCategory.on('text', async (ctx) => {
+  const cat = ctx.message.text.trim().slice(0,50) || 'Umumiy';
+  ctx.session.newQ.category = cat;
   
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')]
-  ]);
+  // minimal validation
+  const q = ctx.session.newQ;
+  if (!q.question || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct) {
+    ctx.session.newQ = null;
+    await ctx.reply('Savol toʻliq emas. Iltimos boshidan kiritishni boshlang: /addquestion');
+    return ctx.scene.leave();
+  }
   
+  // profanity check
+  const joined = [q.question,q.option_a,q.option_b,q.option_c,q.option_d].join(' ');
+  if (containsProfanity(joined)) {
+    await ctx.reply('Savol yoki variantlarda nooʻrin soʻz topildi. Qayta yuboring.');
+    ctx.session.newQ = null;
+    return ctx.scene.leave();
+  }
+
+  // save to pending
+  const id = genId();
+  await db.run(
+    `INSERT INTO pending_questions (id, user_id, username, question, option_a, option_b, option_c, option_d, correct, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, ctx.from.id, ctx.from.username || '', q.question, q.option_a, q.option_b, q.option_c, q.option_d, q.correct, q.category
+  );
+
+  // ensure user exists
+  await db.run(
+    `INSERT OR IGNORE INTO users (user_id, username, reputation) VALUES (?, ?, 0)`,
+    ctx.from.id, ctx.from.username || ''
+  );
+
+  await ctx.reply(`✅ Savolingiz qabul qilindi va admin tasdig'ini kutmoqda. ID: ${id}`);
+  
+  // notify admins
+  const adminNotice = `🆕 Yangi savol keldi\nID: ${id}\nFrom: @${ctx.from.username || ctx.from.id}\nKategoriya: ${q.category}\n\n${q.question}\nA) ${q.option_a}\nB) ${q.option_b}\nC) ${q.option_c}\nD) ${q.option_d}\n✅ To'g'ri: ${q.correct}\n\nTekshirish: /pending`;
+  for (const aid of ADMIN_IDS) {
+    try { 
+      await bot.telegram.sendMessage(aid, adminNotice); 
+    } catch (e) { 
+      console.log('Adminga xabar yuborishda xatolik:', e.message);
+    }
+  }
+
+  ctx.session.newQ = null;
+  return ctx.scene.leave();
+});
+askCategory.on('message', (ctx) => ctx.reply('Iltimos, matn yozing.'));
+
+// Create wizard
+const questionWizard = new Scenes.WizardScene(
+  'questionWizard',
+  askQuestion,
+  askOptA,
+  askOptB,
+  askOptC,
+  askOptD,
+  askCorrect,
+  askCategory
+);
+
+const stage = new Scenes.Stage([questionWizard]);
+bot.use(session());
+bot.use(stage.middleware());
+
+// --- Commands ---
+
+bot.start((ctx) => {
   ctx.reply(
-    getBotInfo(firstName),
-    {
-      ...keyboard
-    }
+    `Assalomu alaykum, ${ctx.from.first_name}! 👋\nQuizBot ga xush kelibsiz.\n\nSavol qo'shish: /addquestion\nOʻynash: /quiz\nAgar admin bo'lsangiz: /pending`
   );
 });
 
-// Statistika ko'rsatish
-bot.action('show_stats', async (ctx) => {
-  const totalUsers = users.size;
-  
-  const message = `📊 Bot Statistikasi
+// addquestion entry
+bot.command('addquestion', (ctx) => ctx.scene.enter('questionWizard'));
 
-👥 Foydalanuvchilar:
-• Jami: ${totalUsers} ta
-• Bugun: ${userStats.dailyStarts} marta
-
-📈 Umumiy:
-• Start bosish: ${userStats.totalStarts} marta
-• Viloyatlar: ${Object.keys(regions).length} ta
-• Tumanlar: ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ ta
-• Qur'on oyatlari: ${islamicMessages.length} ta
-
-🔄 Oxirgi yangilanish: ${new Date().toLocaleString()}`;
+// quiz: show a random approved question
+bot.command('quiz', async (ctx) => {
+  const row = await db.get(`SELECT * FROM questions ORDER BY RANDOM() LIMIT 1`);
+  if (!row) return ctx.reply('Hozircha bazada savol yoʻq. Iltimos, admin tasdiqlagan savollar kelishini kuting.');
   
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🔄 Yangilash', 'show_stats')],
-    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
-  ]);
+  const buttons = [
+    [{ text: `A) ${row.option_a}`, callback_data: `answer|${row.id}|A` }],
+    [{ text: `B) ${row.option_b}`, callback_data: `answer|${row.id}|B` }],
+    [{ text: `C) ${row.option_c}`, callback_data: `answer|${row.id}|C` }],
+    [{ text: `D) ${row.option_d}`, callback_data: `answer|${row.id}|D` }]
+  ];
   
-  try {
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (error) {
-    await ctx.reply(message, { ...keyboard });
-  }
+  // set a time limit
+  ctx.session.lastQuiz = { id: row.id, ts: Date.now() };
+  await ctx.reply(`📝 ${row.question}\n\nKategoriya: ${row.category}`, { 
+    reply_markup: { inline_keyboard: buttons } 
+  });
 });
 
-// Asosiy menyuga qaytish
-bot.action('back_to_main', (ctx) => {
-  const firstName = ctx.from.first_name;
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')]
-  ]);
+// handle answer callbacks
+bot.on('callback_query', async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  if (!data.startsWith('answer|')) return ctx.answerCbQuery();
   
-  ctx.editMessageText(
-    getBotInfo(firstName),
-    {
-      ...keyboard
-    }
+  const [, qid, chosen] = data.split('|');
+  
+  // simple time check (30s)
+  const last = ctx.session.lastQuiz || {};
+  if (!last.id || last.id !== qid || (Date.now() - last.ts) > 30000) {
+    await ctx.answerCbQuery('⏰ Vaqt tugadi yoki savol mos kelmadi.', { show_alert: true });
+    return;
+  }
+  
+  const q = await db.get(`SELECT * FROM questions WHERE id = ?`, qid);
+  if (!q) {
+    await ctx.answerCbQuery('❌ Savol topilmadi.', { show_alert: true });
+    return;
+  }
+  
+  if (chosen === q.correct) {
+    await ctx.answerCbQuery('🎉 Toʻgʻri!', { show_alert: true });
+    await ctx.editMessageText(`✅ ${q.question}\n\nSizning javobingiz: ${chosen}) - TO'G'RI! 🎉\n\nYana savol: /quiz`);
+  } else {
+    await ctx.answerCbQuery(`❌ Noto'g'ri. To'g'ri javob: ${q.correct}`, { show_alert: true });
+    await ctx.editMessageText(`❌ ${q.question}\n\nSizning javobingiz: ${chosen}) - NOTO'G'RI\n✅ To'g'ri javob: ${q.correct})\n\nYana savol: /quiz`);
+  }
+  
+  // clear lastQuiz
+  ctx.session.lastQuiz = null;
+});
+
+// Admin: check pending
+bot.command('pending', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Faqat adminlar kirishi mumkin.');
+  const rows = await db.all(`SELECT * FROM pending_questions ORDER BY created_at DESC LIMIT 50`);
+  if (!rows.length) return ctx.reply('✅ Kutilayotgan savollar yoʻq.');
+  
+  let msg = '📋 Kutilayotgan savollar:\n\n';
+  for (const r of rows) {
+    msg += `🆔 ID: ${r.id}\n👤 From: @${r.username || r.user_id}\n📁 ${r.category}\n❓ ${r.question}\nA) ${r.option_a}\nB) ${r.option_b}\nC) ${r.option_c}\nD) ${r.option_d}\n✅ To'g'ri: ${r.correct}\n\n`;
+  }
+  msg += '\nQabul qilish: /accept <id>\nRad etish: /reject <id>';
+  await ctx.reply(msg);
+});
+
+// Accept pending
+bot.command('accept', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Faqat adminlar.');
+  const parts = ctx.message.text.split(' ').filter(Boolean);
+  if (parts.length < 2) return ctx.reply('ℹ️ Foydalanish: /accept <id>');
+  
+  const id = parts[1].trim();
+  const p = await db.get(`SELECT * FROM pending_questions WHERE id = ?`, id);
+  if (!p) return ctx.reply('❌ Bunday ID topilmadi.');
+  
+  // move to questions
+  const qid = genId();
+  await db.run(
+    `INSERT INTO questions (id, question, option_a, option_b, option_c, option_d, correct, category, added_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    qid, p.question, p.option_a, p.option_b, p.option_c, p.option_d, p.correct, p.category, p.user_id
   );
-});
+  await db.run(`DELETE FROM pending_questions WHERE id = ?`, id);
 
-// Namoz vaqtlari menyusi
-bot.action('prayer_times', (ctx) => {
-  // Foydalanuvchi faolligini yangilash
-  const userId = ctx.from.id;
-  if (users.has(userId)) {
-    const user = users.get(userId);
-    user.lastSeen = new Date();
-    users.set(userId, user);
-  }
-  
-  const keyboard = Markup.inlineKeyboard([
-    ...Object.keys(regions).map(region => 
-      [Markup.button.callback(region, `region_${region}`)]
-    ),
-    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
-  ]);
-  
-  ctx.editMessageText(
-    "🕌 Namoz Vaqtlari\n\nIltimos, viloyatni tanlang:",
-    {
-      ...keyboard
-    }
-  );
-});
+  // reputation +1 to submitter
+  await db.run(`INSERT OR IGNORE INTO users (user_id, username, reputation) VALUES (?, ?, 0)`, p.user_id, p.username || '');
+  await db.run(`UPDATE users SET reputation = reputation + 1 WHERE user_id = ?`, p.user_id);
 
-// Viloyat tanlash
-bot.action(/region_(.+)/, (ctx) => {
-  const region = ctx.match[1];
-  const districts = Object.keys(regions[region].districts);
+  await ctx.reply(`✅ Savol qabul qilindi va bazaga qoʻshildi. Yangi ID: ${qid}`);
   
-  userState[ctx.from.id] = { region };
-  
-  const districtButtons = [];
-  for (let i = 0; i < districts.length; i += 2) {
-    const row = districts.slice(i, i + 2).map(district => 
-      Markup.button.callback(district, `district_${district}`)
-    );
-    districtButtons.push(row);
-  }
-  
-  districtButtons.push([Markup.button.callback('⬅️ Orqaga', 'prayer_times')]);
-  
-  const keyboard = Markup.inlineKeyboard(districtButtons);
-  
-  ctx.editMessageText(
-    `${region} tanlandi. Iltimos tumanni tanlang:`,
-    keyboard
-  );
-});
-
-// Tuman tanlash
-bot.action(/district_(.+)/, async (ctx) => {
-  const district = ctx.match[1];
-  const userId = ctx.from.id;
-  
-  let coords = null;
-  let regionFound = null;
-  
-  for (const region in regions) {
-    if (regions[region].districts[district]) {
-      coords = regions[region].districts[district];
-      regionFound = region;
-      userState[userId] = { region: regionFound, district };
-      break;
-    }
-  }
-
-  if (!coords) {
-    return ctx.answerCbQuery("Xatolik yuz berdi!");
-  }
-
+  // notify submitter
   try {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
-
-    const response = await fetch(
-      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
-    );
-    const data = await response.json();
-
-    if (!data.data || !data.data.timings) throw new Error("API xatosi");
-
-    const times = data.data.timings;
-    const date = data.data.date.readable;
-    
-    // Tasodifiy oyat/hadis tanlash
-    const randomMessage = getRandomIslamicMessage();
-    
-    let message = `🕌 ${district} — ${date}\n\n`;
-    message += `📅 Bugungi namoz vaqtlari:\n\n`;
-    
-    for (const prayer of prayerOrder) {
-      if (prayer === 'Sunrise') continue;
-      message += `${prayerNames[prayer]}: ${times[prayer]}\n`;
-    }
-    
-    message += `\n📍 ${regionFound}\n\n`;
-    message += `${randomMessage}`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔄 Vaqtlarni yangilash', `district_${district}`)],
-      [Markup.button.callback('📖 Yangi oyat', `new_verse_${district}`)],
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')]
-    ]);
-
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (err) {
-    console.error("Xatolik:", err);
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')],
-      [Markup.button.callback(`🔄 Qayta urinish`, `district_${district}`)]
-    ]);
-    
-    await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
-      ...keyboard
-    });
+    await bot.telegram.sendMessage(p.user_id, `🎉 Tabriklaymiz! Siz yuborgan savol qabul qilindi!\nSavol ID: ${qid}\nReputatsiya: +1`);
+  } catch (e) {
+    console.log('Foydalanuvchiga xabar yuborishda xatolik:', e.message);
   }
 });
 
-// Yangi oyat tugmasi
-bot.action(/new_verse_(.+)/, async (ctx) => {
-  const district = ctx.match[1];
-  const userId = ctx.from.id;
+// Reject pending
+bot.command('reject', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Faqat adminlar.');
+  const parts = ctx.message.text.split(' ').filter(Boolean);
+  if (parts.length < 2) return ctx.reply('ℹ️ Foydalanish: /reject <id> [sabab]');
   
-  let coords = null;
-  let regionFound = null;
+  const id = parts[1].trim();
+  const reason = parts.slice(2).join(' ').slice(0,250) || 'Noaniq yoki notoʻgʻri format';
+  const p = await db.get(`SELECT * FROM pending_questions WHERE id = ?`, id);
+  if (!p) return ctx.reply('❌ Bunday ID topilmadi.');
   
-  for (const region in regions) {
-    if (regions[region].districts[district]) {
-      coords = regions[region].districts[district];
-      regionFound = region;
-      break;
-    }
-  }
-
-  try {
-    await ctx.answerCbQuery();
-    
-    const response = await fetch(
-      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
-    );
-    const data = await response.json();
-
-    if (!data.data || !data.data.timings) throw new Error("API xatosi");
-
-    const times = data.data.timings;
-    const date = data.data.date.readable;
-    
-    // Yangi tasodifiy oyat/hadis tanlash
-    const randomMessage = getRandomIslamicMessage();
-    
-    let message = `🕌 ${district} — ${date}\n\n`;
-    message += `📅 Bugungi namoz vaqtlari:\n\n`;
-    
-    for (const prayer of prayerOrder) {
-      if (prayer === 'Sunrise') continue;
-      message += `${prayerNames[prayer]}: ${times[prayer]}\n`;
-    }
-    
-    message += `\n📍 ${regionFound}\n\n`;
-    message += `${randomMessage}`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔄 Vaqtlarni yangilash', `district_${district}`)],
-      [Markup.button.callback('📖 Yangi oyat', `new_verse_${district}`)],
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')]
-    ]);
-
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (err) {
-    console.error("Xatolik:", err);
-    
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')],
-      [Markup.button.callback(`🔄 Qayta urinish`, `district_${district}`)]
-    ]);
-    
-    await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
-      ...keyboard
-    });
-  }
-});
-
-// Bot haqida
-bot.action('bot_info', async (ctx) => {
-  const totalUsers = users.size;
+  await db.run(`DELETE FROM pending_questions WHERE id = ?`, id);
   
-  const message = `ℹ️ Bot Haqida
+  // reputation -1
+  await db.run(`INSERT OR IGNORE INTO users (user_id, username, reputation) VALUES (?, ?, 0)`, p.user_id, p.username || '');
+  await db.run(`UPDATE users SET reputation = reputation - 1 WHERE user_id = ?`, p.user_id);
 
-🤖 Namoz Vaqtlari Boti
-Version: 2.2
-
-📊 Statistika:
-• ${Object.keys(regions).length} ta viloyat
-• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman va shahar
-• ${totalUsers} ta foydalanuvchi
-• ${islamicMessages.length} ta Qur'on oyati va hadis
-
-🌟 Yangi xususiyatlar:
-• Tasodifiy Qur'on oyatlari
-• Yangi oyat tugmasi
-• Foydalanuvchi statistikasi
-
-👨‍💻 Dasturchi: Nomonov
-
-"Har safar yangi ilhom va sabab"`;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('📢 Ulashing', 'share_bot')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')],
-    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
-  ]);
+  await ctx.reply(`❌ Savol rad etildi. Sabab: ${reason}`);
   
   try {
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (error) {}
-});
-
-// Ulashish
-bot.action('share_bot', async (ctx) => {
-  const message = `📢 Botni Ulashing
-
-Do'stlaringizga botni ulashing va savobga tushing!
-
-🤖 Bot nomi: Namoz Vaqtlari Boti
-🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot
-  
-📊 Bot statistikasi:
-• ${users.size} ta foydalanuvchi
-• ${Object.keys(regions).length} ta viloyat
-• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman
-• ${islamicMessages.length} ta Qur'on oyati`;
-  
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌 Namoz vaqtlarini bilib oling!')],
-    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
-  ]);
-  
-  try {
-    await ctx.editMessageText(message, {
-      ...keyboard
-    });
-  } catch (error) {
-    console.log("Xabar o'zgartirish xatosi:", error.message);
+    await bot.telegram.sendMessage(p.user_id, `😔 Siz yuborgan savol rad etildi.\n🆔 ID: ${id}\n📝 Sabab: ${reason}\n📉 Reputatsiya: -1`);
+  } catch (e) {
+    console.log('Foydalanuvchiga xabar yuborishda xatolik:', e.message);
   }
 });
 
-// Har qanday xabarga javob
-bot.on('message', (ctx) => {
-  if (ctx.message.text && !ctx.message.text.startsWith('/')) {
-    const firstName = ctx.from.first_name;
-    const userId = ctx.from.id;
-    
-    users.set(userId, {
-      name: firstName,
-      username: ctx.from.username,
-      firstSeen: new Date(),
-      lastSeen: new Date(),
-      startCount: (users.get(userId)?.startCount || 0) + 1
-    });
-    
-    ctx.reply(
-      `Assalomu alaykum ${firstName || "do'st"}! Botdan foydalanish uchun /start buyrug'ini bering:`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback('🚀 Botni ishga tushirish', 'start_bot')]
-      ])
-    );
+// Stats
+bot.command('stats', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Faqat adminlar.');
+  
+  const totalPending = await db.get(`SELECT COUNT(*) as c FROM pending_questions`);
+  const totalQuestions = await db.get(`SELECT COUNT(*) as c FROM questions`);
+  const topUsers = await db.all(`SELECT user_id, username, reputation FROM users ORDER BY reputation DESC LIMIT 10`);
+  
+  let msg = `📊 Statistika\n\n✅ Tasdiqlangan savollar: ${totalQuestions.c}\n⏳ Kutilayotgan savollar: ${totalPending.c}\n\n🏆 Top foydalanuvchilar:\n`;
+  for (const u of topUsers) {
+    msg += `👤 @${u.username || u.user_id} — ${u.reputation} ball\n`;
   }
+  await ctx.reply(msg);
 });
 
-// Start bot tugmasi uchun handler
-bot.action('start_bot', (ctx) => {
-  const firstName = ctx.from.first_name;
+// Fallback text handler
+bot.on('text', (ctx) => {
+  const t = ctx.message.text;
+  if (t.startsWith('/')) return;
+  ctx.reply('ℹ️ Nimani xohlayotganingizni aniq yozing:\n/addquestion — savol yuborish\n/quiz — o\'ynash\n/pending — admin paneli');
+});
+
+// Start bot
+async function startBot() {
+  await initDb();
+  console.log('Database initialized, starting bot...');
   
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
-    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
-    [Markup.button.callback('📊 Statistika', 'show_stats')]
-  ]);
-  
-  ctx.editMessageText(
-    getBotInfo(firstName),
-    {
-      ...keyboard
-    }
-  );
-});
+  bot.launch().then(() => {
+    console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
+  }).catch(console.error);
+}
 
-// SERVER FOR RENDER
-const PORT = process.env.PORT || 3000;
+startBot();
 
-const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end(BOT_DESCRIPTION);
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server ${PORT} portida ishga tushdi`);
-});
-
-// Keep-alive
-setInterval(() => {
-  console.log('❤️ Bot jonli... ' + new Date().toLocaleString());
-  console.log(`👥 Foydalanuvchilar: ${users.size} ta`);
-}, 600000); // 10 daqiqa
-
-// Botni ishga tushirish
-bot.launch().then(() => {
-  console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
-  console.log(`📊 Boshlang'ich statistika: ${users.size} ta foydalanuvchi`);
-}).catch((error) => {
-  console.error('❌ Botni ishga tushirishda xato:', error);
-});
-
-// Graceful shutdown
-process.once('SIGINT', () => {
-  bot.stop('SIGINT');
-  console.log('🔄 Bot toxtatildi (SIGINT)');
-});
-
-process.once('SIGTERM', () => {
-  bot.stop('SIGTERM');
-  console.log('🔄 Bot toxtatildi (SIGTERM)');
-});
+// graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
