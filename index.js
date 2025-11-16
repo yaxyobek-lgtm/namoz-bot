@@ -50,7 +50,7 @@ const prayerNames = {
   'Isha': '🌙 Xufton'
 };
 
-// Qolgan vaqtni hisoblash - TO'G'RILANDI
+// Qolgan vaqtni hisoblash - TO'LIQ TUZATILDI
 function getTimeRemaining(currentTime, prayerTime) {
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const [prayerHours, prayerMinutes] = prayerTime.split(':').map(Number);
@@ -59,8 +59,8 @@ function getTimeRemaining(currentTime, prayerTime) {
   let prayerTotal = prayerHours * 60 + prayerMinutes;
   
   // Agar namoz vaqti o'tib bo'lsa, ertangi kunga qo'shamiz
-  if (prayerTotal < currentTotal) {
-    prayerTotal += 24 * 60;
+  if (prayerTotal <= currentTotal) {
+    prayerTotal += 24 * 60; // Keyingi kungagi vaqt
   }
   
   const diff = prayerTotal - currentTotal;
@@ -74,10 +74,13 @@ function getTimeRemaining(currentTime, prayerTime) {
   }
 }
 
-// Keyingi namoz va qolgan vaqtni topish - TO'G'RILANDI
+// Keyingi namoz va qolgan vaqtni topish - TO'LIQ TUZATILDI
 function getNextPrayerWithTime(times) {
   const now = new Date();
   const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  
+  console.log(`🕒 Joriy vaqt: ${currentTime}`);
+  console.log(`📅 Namoz vaqtlari:`, times);
   
   const [currentHours, currentMinutes] = currentTime.split(':').map(Number);
   const currentTotal = currentHours * 60 + currentMinutes;
@@ -87,7 +90,7 @@ function getNextPrayerWithTime(times) {
   
   // Barcha namoz vaqtlarini tekshiramiz
   for (const prayer of prayerOrder) {
-    if (prayer === 'Sunrise') continue;
+    if (prayer === 'Sunrise') continue; // Quyosh chiqishini o'tkazib yuboramiz
     
     const prayerTime = times[prayer];
     if (!prayerTime) continue;
@@ -96,11 +99,13 @@ function getNextPrayerWithTime(times) {
     let prayerTotal = prayerHours * 60 + prayerMinutes;
     
     // Agar namoz vaqti o'tib bo'lsa, ertangi kunga qo'shamiz
-    if (prayerTotal < currentTotal) {
+    if (prayerTotal <= currentTotal) {
       prayerTotal += 24 * 60;
     }
     
     const timeDiff = prayerTotal - currentTotal;
+    
+    console.log(`⏰ ${prayer}: ${prayerTime} - ${timeDiff} daqiqa qolgan`);
     
     // Eng yaqin namozni topamiz
     if (timeDiff > 0 && timeDiff < minTimeDiff) {
@@ -109,7 +114,7 @@ function getNextPrayerWithTime(times) {
         prayer: prayer,
         prayerName: prayerNames[prayer],
         time: prayerTime,
-        remaining: getTimeRemaining(currentTime, times[prayer])
+        remaining: getTimeRemaining(currentTime, prayerTime)
       };
     }
   }
@@ -126,6 +131,7 @@ function getNextPrayerWithTime(times) {
     };
   }
   
+  console.log(`✅ Keyingi namoz: ${nextPrayer.prayerName} - ${nextPrayer.time} - ${nextPrayer.remaining}`);
   return nextPrayer;
 }
 
@@ -158,7 +164,7 @@ function getFridayMessage() {
   return fridayMessages[Math.floor(Math.random() * fridayMessages.length)];
 }
 
-// BARCHA VILOYAT VA TUMANLAR - TO'LIQ RO'YXAT
+// VILOYATLAR VA TUMANLAR - SIZ TO'LDIRASIZ
 const regions = {
   "Toshkent shahri": {
     districts: {
@@ -567,7 +573,7 @@ bot.action(/region_(.+)/, (ctx) => {
   );
 });
 
-// Tuman tanlash
+// Tuman tanlash - TO'LIQ TUZATILDI
 bot.action(/district_(.+)/, async (ctx) => {
   const district = ctx.match[1];
   const userId = ctx.from.id;
@@ -601,10 +607,15 @@ bot.action(/district_(.+)/, async (ctx) => {
 
     const times = data.data.timings;
     const date = data.data.date.readable;
+    const now = new Date();
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     
     const nextPrayer = getNextPrayerWithTime(times);
     
-    let message = `🕌 ${district} — ${date} namoz vaqtlari:\n\n`;
+    // Yangi format - joriy vaqt ham ko'rsatiladi
+    let message = `🕌 ${district} — ${date}\n`;
+    message += `🕒 Joriy vaqt: ${currentTime}\n\n`;
+    message += `📅 Bugungi namoz vaqtlari:\n\n`;
     
     for (const prayer of prayerOrder) {
       if (prayer === 'Sunrise') continue;
