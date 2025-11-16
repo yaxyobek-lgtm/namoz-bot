@@ -5,6 +5,7 @@ require('dotenv').config();
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const userStates = new Map();
 
+// Asosiy menyu
 function mainMenu() {
     return Markup.keyboard([
         ['💳 Yangi chek yaratish'],
@@ -12,147 +13,221 @@ function mainMenu() {
     ]).resize();
 }
 
+// Chek rasmini yaratish funksiyasi
 async function createCheckImage(userData) {
-    const canvas = createCanvas(400, 650);
+    const canvas = createCanvas(400, 600);
     const ctx = canvas.getContext('2d');
 
-    // Orqa fon
+    // Orqa fon - oq rang
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // STATUS BAR (telefonning yuqori qismi)
-    const currentTime = new Date();
-    const timeString = currentTime.toLocaleTimeString('uz-UZ', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-    });
-
-    // Status bar fon
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, canvas.width, 25);
-
-    // Soat
+    // HEADER (Foydalanuvchi ma'lumotlari)
+    const headerY = 30;
+    
+    // Avatar
+    ctx.fillStyle = '#313131';
+    ctx.beginPath();
+    ctx.arc(30, headerY, 24, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Avatar harflari
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 14px Arial';
-    ctx.fillText(timeString, 20, 17);
+    ctx.textAlign = 'center';
+    ctx.fillText(userData.initials, 30, headerY + 5);
+    ctx.textAlign = 'left';
 
-    // Status ikonkalari (o'ng tomonda)
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '12px Arial';
-    
-    // Batareya
-    ctx.fillText('🔋', 320, 17);
-    // WiFi
-    ctx.fillText('📶', 345, 17);
-    // Signal
-    ctx.fillText('📱', 370, 17);
-
-    // ASOSIY KONTENT
-    const yStart = 40;
-
-    // Foydalanuvchi ismi va karta raqami
+    // Ism
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText(userData.username, 20, yStart + 30);
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText(userData.username, 65, headerY - 8);
 
-    // Karta raqami (faqat oxirgi 4 raqam ko'rinadi)
-    const maskedCard = `**** **** **** ${userData.cardNumber.slice(-4)}`;
+    // Karta raqami
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '13px Arial';
+    const maskedCard = `4916 9*** **** ${userData.cardNumber.slice(-4)}`;
+    ctx.fillText(maskedCard, 65, headerY + 12);
+
+    // Ikonkalar (o'ng tomonda)
     ctx.font = '16px Arial';
-    ctx.fillText(maskedCard, 20, yStart + 60);
+    ctx.fillText('📋', 350, headerY - 8);
+    ctx.fillText('👤', 380, headerY - 8);
 
-    // Ajratuvchi chiziq
+    // "Bugun" matni
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Bugun', canvas.width / 2, headerY + 50);
+    ctx.textAlign = 'left';
+
+    // ASOSIY KARTA
+    const cardY = headerY + 70;
+    const cardWidth = canvas.width - 32;
+    const cardHeight = 380;
+
+    // Karta fon
+    ctx.fillStyle = '#f8f9fa';
+    ctx.beginPath();
+    ctx.roundRect(16, cardY, cardWidth, cardHeight, 14);
+    ctx.fill();
+
+    // Karta chegarasi
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(20, yStart + 80);
-    ctx.lineTo(380, yStart + 80);
+    ctx.roundRect(16, cardY, cardWidth, cardHeight, 14);
     ctx.stroke();
 
-    // Chek ma'lumotlari
-    const infoY = yStart + 110;
+    // Karta ichidagi kontent
+    const contentX = 32;
+    let contentY = cardY + 25;
 
-    // Sarlavha - @tezcheklot
+    // Sarlavha
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold 16px Arial';
-    ctx.fillText('# @tezcheklot', 20, infoY);
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText('Pul o\'tkazmasi', contentX, contentY);
 
-    // Qalin chiziq
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
+    // Status
+    ctx.fillStyle = '#28a745';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText(`Muvaffaqiyatli ${userData.transferTime}`, contentX, contentY + 25);
+
+    // Nusxa olish tugmasi
+    ctx.fillStyle = '#e9ecef';
     ctx.beginPath();
-    ctx.moveTo(20, infoY + 15);
-    ctx.lineTo(380, infoY + 15);
-    ctx.stroke();
-
-    // "Bugun"
+    ctx.roundRect(320, cardY + 15, 40, 40, 10);
+    ctx.fill();
+    ctx.fillStyle = '#000000';
     ctx.font = '16px Arial';
-    ctx.fillText('Bugun', 20, infoY + 45);
-
-    // Pul o'tkazmasi muvaffaqiyatli
-    ctx.font = 'bold 16px Arial';
-    ctx.fillText(`Pul o'tkazmasi Muvaffaqiyatli ${userData.transferTime}`, 20, infoY + 75);
+    ctx.fillText('📄', 332, cardY + 42);
 
     // Summa
-    ctx.font = 'bold 22px Arial';
-    ctx.fillText(`${parseInt(userData.amount).toLocaleString()} so'm`, 20, infoY + 110);
+    contentY += 60;
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText(`${parseInt(userData.amount).toLocaleString()}`, contentX, contentY);
+    
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '14px Arial';
+    ctx.fillText('so\'m', contentX + ctx.measureText(`${parseInt(userData.amount).toLocaleString()}`).width + 8, contentY - 20);
 
-    // Izoh
-    ctx.font = '16px Arial';
-    ctx.fillText('Izoh qo\'shish', 20, infoY + 145);
-
-    // Cashback (yashil rangda)
+    // Cashback
+    contentY += 50;
     const cashback = Math.round(userData.amount * 0.0025);
-    ctx.fillStyle = '#008000';
-    ctx.font = 'bold 15px Arial';
-    ctx.fillText(`- CASHBACK tushdi: ${cashback.toLocaleString()} so'm`, 20, infoY + 180);
+    
+    // Cashback kartasi
+    ctx.fillStyle = 'rgba(0,0,0,0.03)';
+    ctx.beginPath();
+    ctx.roundRect(contentX, contentY, cardWidth - 32, 50, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.beginPath();
+    ctx.roundRect(contentX, contentY, cardWidth - 32, 50, 12);
+    ctx.stroke();
 
-    // TUGMALAR QATORI
-    const buttonsY = infoY + 220;
+    // Cashback ikonkasi
+    ctx.fillStyle = '#28a745';
+    ctx.beginPath();
+    ctx.arc(contentX + 25, contentY + 25, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('💰', contentX + 25, contentY + 29);
+    ctx.textAlign = 'left';
+
+    // Cashback matni
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '14px Arial';
+    ctx.fillText('CASHBACK tushdi:', contentX + 50, contentY + 20);
+    ctx.fillStyle = '#28a745';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(`${cashback.toLocaleString()} so'm`, contentX + 50, contentY + 40);
+
+    // Tez tugmalar
+    contentY += 80;
     const buttons = ['50 000', '100 000', '200 000', '320 000'];
-    const buttonWidth = 85;
+    const buttonWidth = 80;
     const buttonHeight = 35;
+    const spacing = 10;
 
     for (let i = 0; i < buttons.length; i++) {
-        const x = 20 + i * (buttonWidth + 5);
+        const x = contentX + i * (buttonWidth + spacing);
         
         // Tugma fon
-        ctx.fillStyle = '#f8f9fa';
-        ctx.fillRect(x, buttonsY, buttonWidth, buttonHeight);
+        ctx.fillStyle = '#e9ecef';
+        ctx.beginPath();
+        ctx.roundRect(x, contentY, buttonWidth, buttonHeight, 18);
+        ctx.fill();
         
         // Tugma chegarasi
         ctx.strokeStyle = '#e0e0e0';
-        ctx.strokeRect(x, buttonsY, buttonWidth, buttonHeight);
+        ctx.beginPath();
+        ctx.roundRect(x, contentY, buttonWidth, buttonHeight, 18);
+        ctx.stroke();
         
         // Tugma matni
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Arial';
+        ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(buttons[i], x + buttonWidth/2, buttonsY + 22);
+        ctx.fillText(buttons[i], x + buttonWidth/2, contentY + 22);
     }
-
     ctx.textAlign = 'left';
 
-    // PASTKI TUGMALAR
-    const bottomY = buttonsY + 60;
-
+    // Input maydoni va tugmalar
+    contentY += 60;
+    
     // "Pul o'tkazish" tugmasi
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(20, bottomY, 120, 40);
+    ctx.fillStyle = '#e9ecef';
+    ctx.beginPath();
+    ctx.roundRect(contentX, contentY, 120, 45, 12);
+    ctx.fill();
     ctx.strokeStyle = '#e0e0e0';
-    ctx.strokeRect(20, bottomY, 120, 40);
+    ctx.beginPath();
+    ctx.roundRect(contentX, contentY, 120, 45, 12);
+    ctx.stroke();
     ctx.fillStyle = '#000000';
     ctx.font = '14px Arial';
-    ctx.fillText('Pul o\'tkazish', 40, bottomY + 25);
+    ctx.fillText('Pul o\'tkazish', contentX + 20, contentY + 28);
 
-    // "Keyingi" tugmasi (ko'k rangda)
-    ctx.fillStyle = '#007bff';
-    ctx.fillRect(280, bottomY, 80, 40);
+    // Input maydoni
     ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(contentX + 140, contentY, 120, 45, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.beginPath();
+    ctx.roundRect(contentX + 140, contentY, 120, 45, 12);
+    ctx.stroke();
+    ctx.fillStyle = '#6c757d';
     ctx.font = '14px Arial';
-    ctx.fillText('Keyingi', 300, bottomY + 25);
+    ctx.fillText('Pul o\'tkazish', contentX + 150, contentY + 28);
+
+    // "Keyingi" tugmasi
+    ctx.fillStyle = '#007bff';
+    ctx.beginPath();
+    ctx.roundRect(contentX + 280, contentY, 80, 45, 12);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('Keyingi', contentX + 295, contentY + 28);
 
     return canvas.toBuffer('image/png');
+}
+
+// Canvas uchun roundRect funksiyasi
+CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+    return this;
 }
 
 // Start komandasi
@@ -207,9 +282,13 @@ bot.on('text', async (ctx) => {
                 return ctx.reply('❌ Summa notoʻgʻri kiritildi. Iltimos, qaytadan kiriting:');
             }
 
+            // Ismdan bosh harflar olish
+            const initials = username.split(' ').map(n => n[0]).join('').toUpperCase();
+
             // Ma'lumotlarni saqlash
             const userData = {
                 username: username,
+                initials: initials,
                 cardNumber: cardNumber,
                 amount: amount,
                 transferTime: new Date().toLocaleTimeString('uz-UZ', { 
