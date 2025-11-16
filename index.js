@@ -576,4 +576,351 @@ bot.action(/district_(.+)/, async (ctx) => {
   let regionFound = null;
   
   for (const region in regions) {
-    if (regions[region].districts
+    if (regions[region].districts[district]) {
+      coords = regions[region].districts[district];
+      regionFound = region;
+      userState[userId] = { region: regionFound, district };
+      break;
+    }
+  }
+
+  if (!coords) {
+    return ctx.answerCbQuery("Xatolik yuz berdi!");
+  }
+
+  try {
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`🕌 ${district} — namoz vaqtlari olinmoqda... ⏳`);
+
+    const response = await fetch(
+      `http://api.aladhan.com/v1/timings?latitude=${coords.lat}&longitude=${coords.lng}&method=2&timezonestring=Asia/Tashkent`
+    );
+    const data = await response.json();
+
+    if (!data.data || !data.data.timings) throw new Error("API xatosi");
+
+    const times = data.data.timings;
+    const date = data.data.date.readable;
+    
+    const nextPrayer = getNextPrayerWithTime(times);
+    
+    let message = `🕌 ${district} — ${date} namoz vaqtlari:\n\n`;
+    
+    for (const prayer of prayerOrder) {
+      if (prayer === 'Sunrise') continue;
+      message += `${prayerNames[prayer]}: ${times[prayer]}\n`;
+    }
+    
+    message += `\n⏰ Keyingi namoz: ${nextPrayer.prayerName}\n`;
+    message += `🕒 Vaqt: ${nextPrayer.time}\n`;
+    message += `⏳ Qolgan vaqt: ${nextPrayer.remaining}\n\n`;
+    
+    message += `📍 ${regionFound}\n\n`;
+    message += `🤲 "Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🔄 Vaqtlarni yangilash', `district_${district}`)],
+      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')]
+    ]);
+
+    await ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } catch (err) {
+    console.error("Xatolik:", err);
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('⬅️ Bosh menyuga qaytish', 'back_to_main')],
+      [Markup.button.callback(`🔄 Qayta urinish`, `district_${district}`)]
+    ]);
+    
+    await ctx.editMessageText("❌ Xatolik! Iltimos keyinroq urinib ko'ring.", {
+      ...keyboard
+    });
+  }
+});
+
+// Bot haqida
+bot.action('bot_info', async (ctx) => {
+  const totalUsers = users.size;
+  const totalRatings = Object.keys(userRatings).length;
+  
+  let averageRating = "0.0";
+  if (totalRatings > 0) {
+    const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+    averageRating = (sum / totalRatings).toFixed(1);
+  }
+  
+  const message = `ℹ️ Bot Haqida
+
+🤖 Namoz Vaqtlari Boti
+Version: 2.1
+
+📊 Statistika:
+• ${Object.keys(regions).length} ta viloyat
+• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman va shahar
+• ${totalUsers} ta foydalanuvchi
+• ⭐ ${averageRating} (${totalRatings} ta baho)
+
+🌟 Yangi xususiyatlar:
+• Foydalanuvchi statistikasi
+• Juma kuni tabrik xabari
+• Haftalik faollik ko'rsatkichi
+• Real vaqtda yangilanish
+
+👨‍💻 Dasturchi: Nomonov
+
+"Albatta, namoz mo'minlarga vaqtida farz qilindi" (An-Niso: 103)`;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('⭐ Baholang', 'rate_bot')],
+    [Markup.button.callback('📢 Ulashing', 'share_bot')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')],
+    [Markup.button.callback('⬅️ Orqaga', 'back_to_main')]
+  ]);
+  
+  try {
+    await ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } catch (error) {}
+});
+
+// Baholash tizimi
+bot.action('rate_bot', (ctx) => {
+  const userId = ctx.from.id;
+  
+  if (userRatings[userId]) {
+    const userRating = userRatings[userId];
+    const totalRatings = Object.keys(userRatings).length;
+    
+    let averageRating = "0.0";
+    if (totalRatings > 0) {
+      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+      averageRating = (sum / totalRatings).toFixed(1);
+    }
+    
+    const message = `⭐ Siz allaqachon baholagansiz
+
+Siz botimizga ${userRating} ⭐ baho bergansiz.
+
+📊 Joriy statistika:
+• ⭐ ${averageRating} (${totalRatings} ta baho)
+• ${users.size} ta foydalanuvchi
+
+Agar bahoingizni o'zgartirmoqchi bo'lsangiz, "Bahoni o'zgartirish" tugmasini bosing.`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('✏️ Bahoni o\'zgartirish', 'change_rating')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } else {
+    const message = `⭐ Botni Baholang
+
+Botimiz sizga qanchalik yoqdi? Baholang:`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
+      [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
+      [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    ctx.editMessageText(message, {
+      ...keyboard
+    });
+  }
+});
+
+// Bahoni o'zgartirish
+bot.action('change_rating', (ctx) => {
+  const message = `✏️ Bahoni O'zgartirish
+
+Yangi bahoni tanlang:`;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('⭐️ 1', 'rate_1'), Markup.button.callback('⭐️⭐️ 2', 'rate_2')],
+    [Markup.button.callback('⭐️⭐️⭐️ 3', 'rate_3'), Markup.button.callback('⭐️⭐️⭐️⭐️ 4', 'rate_4')],
+    [Markup.button.callback('⭐️⭐️⭐️⭐️⭐️ 5', 'rate_5')],
+    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+  ]);
+  
+  ctx.editMessageText(message, {
+    ...keyboard
+  });
+});
+
+// Baholarni qayta ishlash
+const ratingHandlers = {
+  'rate_1': 1, 'rate_2': 2, 'rate_3': 3, 'rate_4': 4, 'rate_5': 5
+};
+
+for (const [action, rating] of Object.entries(ratingHandlers)) {
+  bot.action(action, async (ctx) => {
+    const userId = ctx.from.id;
+    
+    const oldRating = userRatings[userId];
+    userRatings[userId] = rating;
+    
+    const totalRatings = Object.keys(userRatings).length;
+    
+    let averageRating = "0.0";
+    if (totalRatings > 0) {
+      const sum = Object.values(userRatings).reduce((a, b) => a + b, 0);
+      averageRating = (sum / totalRatings).toFixed(1);
+    }
+    
+    if (oldRating) {
+      await ctx.answerCbQuery(`✅ Baho ${oldRating} dan ${rating} ga o'zgartirildi!`);
+    } else {
+      await ctx.answerCbQuery(`✅ Rahmat! ${rating} baho berdingiz!`);
+    }
+    
+    const message = `✅ ${oldRating ? 'Baho o\'zgartirildi!' : 'Rahmat! Baholaganingiz uchun tashakkur!'}
+
+${oldRating ? `Sizning bahoingiz ${oldRating} ⭐ dan ${rating} ⭐ ga o'zgartirildi.` : `Siz ${rating} ⭐ baho berdingiz.`}
+
+📊 Yangi statistika:
+• ⭐ ${averageRating} (${totalRatings} ta baho)
+• ${users.size} ta foydalanuvchi`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📢 Boshqalarga ulashing', 'share_bot')],
+      [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+    ]);
+    
+    await ctx.editMessageText(message, {
+      ...keyboard
+    });
+  });
+}
+
+// Ulashish
+bot.action('share_bot', async (ctx) => {
+  const message = `📢 Botni Ulashing
+
+Do'stlaringizga botni ulashing va savobga tushing!
+
+🤖 Bot nomi: Namoz Vaqtlari Boti
+🔗 Havola: https://t.me/namoz_vaqtlari_bugun_bot
+  
+📊 Bot statistikasi:
+• ${users.size} ta foydalanuvchi
+• ${Object.keys(regions).length} ta viloyat
+• ${Object.values(regions).reduce((acc, region) => acc + Object.keys(region.districts).length, 0)}+ tuman`;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.url('📤 Telegramda Ulashish', 'https://t.me/share/url?url=https://t.me/namoz_vaqtlari_bugun_bot&text=🕌 Namoz vaqtlarini bilib oling!')],
+    [Markup.button.callback('⬅️ Orqaga', 'bot_info')]
+  ]);
+  
+  try {
+    await ctx.editMessageText(message, {
+      ...keyboard
+    });
+  } catch (error) {
+    console.log("Xabar o'zgartirish xatosi:", error.message);
+  }
+});
+
+// Har qanday xabarga javob
+bot.on('message', (ctx) => {
+  if (ctx.message.text && !ctx.message.text.startsWith('/')) {
+    const firstName = ctx.from.first_name;
+    const userId = ctx.from.id;
+    
+    users.set(userId, {
+      name: firstName,
+      username: ctx.from.username,
+      firstSeen: new Date(),
+      lastSeen: new Date(),
+      startCount: (users.get(userId)?.startCount || 0) + 1
+    });
+    
+    ctx.reply(
+      `Assalomu alaykum ${firstName || "do'st"}! Botdan foydalanish uchun /start buyrug'ini bering:`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🚀 Botni ishga tushirish', 'start_bot')]
+      ])
+    );
+  }
+});
+
+// Start bot tugmasi uchun handler
+bot.action('start_bot', (ctx) => {
+  const firstName = ctx.from.first_name;
+  
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('🕌 Namoz Vaqtlari', 'prayer_times')],
+    [Markup.button.callback('ℹ️ Bot Haqida', 'bot_info')],
+    [Markup.button.callback('📊 Statistika', 'show_stats')]
+  ]);
+  
+  ctx.editMessageText(
+    getBotInfo(firstName),
+    {
+      ...keyboard
+    }
+  );
+});
+
+// Juma kuni tabrik xabarini avtomatik jo'natish
+function sendFridayGreeting() {
+  const now = new Date();
+  if (now.getDay() === 5 && now.getHours() === 8) { // Juma, soat 8:00
+    const fridayMessage = getFridayMessage();
+    
+    users.forEach((user, userId) => {
+      try {
+        bot.telegram.sendMessage(userId, fridayMessage);
+        console.log(`📿 Juma tabriki jo'natildi: ${user.name}`);
+      } catch (error) {
+        console.log(`❌ Juma tabriki jo'natilmadi: ${user.name}`);
+      }
+    });
+  }
+}
+
+// SERVER FOR RENDER
+const PORT = process.env.PORT || 3000;
+
+const server = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end(BOT_DESCRIPTION);
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server ${PORT} portida ishga tushdi`);
+});
+
+// Keep-alive va Juma tekshiruvi
+setInterval(() => {
+  console.log('❤️ Bot jonli... ' + new Date().toLocaleString());
+  console.log(`👥 Foydalanuvchilar: ${users.size} ta`);
+  
+  // Juma tabrikini tekshirish
+  sendFridayGreeting();
+}, 600000); // 10 daqiqa
+
+// Botni ishga tushirish
+bot.launch().then(() => {
+  console.log('🤖 Bot muvaffaqiyatli ishga tushdi!');
+  console.log(`📊 Boshlang'ich statistika: ${users.size} ta foydalanuvchi`);
+}).catch((error) => {
+  console.error('❌ Botni ishga tushirishda xato:', error);
+});
+
+// Graceful shutdown
+process.once('SIGINT', () => {
+  bot.stop('SIGINT');
+  console.log('🔄 Bot toxtatildi (SIGINT)');
+});
+
+process.once('SIGTERM', () => {
+  bot.stop('SIGTERM');
+  console.log('🔄 Bot toxtatildi (SIGTERM)');
+});
